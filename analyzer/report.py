@@ -176,6 +176,120 @@ def people_table(title, stats, overall, score_format, note, collapsible=False, s
     section=f"""<section><h2>{esc(title)}</h2><p class='hint'>{esc(note)}</p><div class='table-wrap'><table><thead><tr><th>Name</th><th>Anime</th><th>Average</th><th>Top-rate</th><th>Top-rate lift</th>{extra}</tr></thead><tbody>{linked_stat_rows(stats,overall,score_format,show_roles=show_roles)}</tbody></table></div></section>"""
     return f"<details><summary>{esc(title)}</summary>{section}</details>" if collapsible else section
 
+def filter_va_stats_by_role(stats, role_name):
+    filtered=[]
+    target=role_name.upper()
+    for stat in stats:
+        appearances=[]
+        for appearance in getattr(stat,"appearances",[]):
+            matching=[
+                role for role in appearance.get("roles") or []
+                if (role.get("role") or "UNKNOWN").upper()==target
+            ]
+            if not matching:
+                continue
+            clone=dict(appearance)
+            clone["roles"]=matching
+            clone["main_count"]=len(matching) if target=="MAIN" else 0
+            clone["supporting_count"]=len(matching) if target=="SUPPORTING" else 0
+            clone["background_count"]=len(matching) if target=="BACKGROUND" else 0
+            appearances.append(clone)
+
+        if not appearances:
+            continue
+
+        clone_stat=type(stat)(
+            stat.name,
+            len(appearances),
+            stat.average,
+            stat.lift,
+            stat.top_rate,
+            stat.ratings,
+        )
+        clone_stat.url=getattr(stat,"url","")
+        clone_stat.appearances=appearances
+        clone_stat.main_roles=sum(item.get("main_count",0) for item in appearances)
+        clone_stat.supporting_roles=sum(item.get("supporting_count",0) for item in appearances)
+        clone_stat.background_roles=sum(item.get("background_count",0) for item in appearances)
+        filtered.append(clone_stat)
+
+    return sorted(
+        filtered,
+        key=lambda stat:(stat.count,stat.top_rate,stat.average,stat.name.lower()),
+        reverse=True,
+    )
+
+
+def va_role_table(title, stats, overall, score_format, role_name, collapsible=False):
+    role_stats=filter_va_stats_by_role(stats,role_name)
+    note_map={
+        "MAIN":"Recurring performers linked through MAIN-character roles.",
+        "SUPPORTING":"Recurring performers linked through SUPPORTING-character roles.",
+        "BACKGROUND":"Recurring performers linked through BACKGROUND-character roles.",
+    }
+    return people_table(
+        title,
+        role_stats,
+        overall,
+        score_format,
+        note_map[role_name.upper()],
+        collapsible=collapsible,
+        show_roles=True,
+    )
+
+
+def voice_actor_tables(japanese_stats, english_stats, overall, score_format):
+    return (
+        va_role_table(
+            "Japanese voice actors — Main roles",
+            japanese_stats,
+            overall,
+            score_format,
+            "MAIN",
+            collapsible=False,
+        )
+        + va_role_table(
+            "Japanese voice actors — Supporting roles",
+            japanese_stats,
+            overall,
+            score_format,
+            "SUPPORTING",
+            collapsible=True,
+        )
+        + va_role_table(
+            "Japanese voice actors — Background roles",
+            japanese_stats,
+            overall,
+            score_format,
+            "BACKGROUND",
+            collapsible=True,
+        )
+        + va_role_table(
+            "English voice actors — Main roles",
+            english_stats,
+            overall,
+            score_format,
+            "MAIN",
+            collapsible=True,
+        )
+        + va_role_table(
+            "English voice actors — Supporting roles",
+            english_stats,
+            overall,
+            score_format,
+            "SUPPORTING",
+            collapsible=True,
+        )
+        + va_role_table(
+            "English voice actors — Background roles",
+            english_stats,
+            overall,
+            score_format,
+            "BACKGROUND",
+            collapsible=True,
+        )
+    )
+
 def build_html(user, rows, all_entries, output, score_format, overall, stats, identity, recommendation_groups, include_staff):
     ratings=[float(r["rating"]) for r in rows if r.get("rating") is not None]
     max_score=score_format["max"]
@@ -206,12 +320,19 @@ def build_html(user, rows, all_entries, output, score_format, overall, stats, id
     primary+=tag_sections(stats["all_tags"],overall,score_format)
     people = ""
     if include_staff:
-        people += people_table("Creative staff", stats["staff"], overall, score_format,
-                               "Recurring directors, writers, composers, creators, and designers associated with higher-rated anime.")
-        people += people_table("Japanese voice actors", stats["japanese_vas"], overall, score_format,
-                               "Performers AniList identifies as Japanese-language actors. Main, supporting, and background character roles are shown separately.", show_roles=True)
-        people += people_table("English voice actors", stats["english_vas"], overall, score_format,
-                               "Performers AniList identifies as English-language actors. Main, supporting, and background character roles are shown separately.", True, show_roles=True)
+        people += people_table(
+            "Creative staff",
+            stats["staff"],
+            overall,
+            score_format,
+            "Recurring directors, writers, composers, creators, and designers associated with higher-rated anime.",
+        )
+        people += voice_actor_tables(
+            stats["japanese_vas"],
+            stats["english_vas"],
+            overall,
+            score_format,
+        )
 
     secondary=group_table("Studios",stats["studios"],overall,score_format,20,False,True)
     secondary+=group_table("Source material",stats["sources"],overall,score_format,20,False,True)

@@ -1,4 +1,4 @@
-AniList Taste Analyzer 1.9.1
+AniList Taste Analyzer 1.9.2
 
 Windows
 1. Replace the previous project files with this version.
@@ -24,3 +24,10 @@ Cache
 
 1.9.1 hotfix
 - Fixed malformed GraphQL batch query strings caused by literal \\n characters.
+
+
+1.9.2
+- Japanese main-role VA matches are shown first.
+- Japanese supporting and background VA matches are separate expandable groups.
+- English main, supporting, and background VA matches are also separated.
+- Existing anime, character, and role examples are preserved.
