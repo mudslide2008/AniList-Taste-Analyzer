@@ -1,30 +1,22 @@
-AniList Taste Analyzer 1.8
+AniList Taste Analyzer 1.9
 
 Windows
-1. Double-click run_anime_analyzer.bat
-2. Enter an AniList username
-3. The HTML report opens automatically
+1. Replace the previous project files with this version.
+2. Double-click run_anime_analyzer.bat.
+3. Enter an AniList username.
 
-Voice actor changes in 1.8
-- Voice cast is fetched in batches of 10 anime instead of one request per anime.
-- A first run with 153 anime should usually need roughly 16 initial cast requests,
-  plus a few extra requests only for anime with more than 50 listed characters.
-- Voice actor results are cached in .anilist_cache/voice_actors.json.
-- The cache is shared between users, so analyzing friends' lists reuses cast data.
-- Cache progress is saved after every successful request.
-- If AniList throttles or the program is interrupted, rerunning resumes from cache.
-- Japanese and English performers retain their character and anime examples.
-- Use --refresh-va-cache only when you intentionally want to download cast data again.
+Voice actor fixes
+- The analyzer no longer trusts AniList's voiceActors(language: ...) filter.
+- It fetches each cast once and classifies performers using Staff.languageV2.
+- Japanese and English sections are therefore separated locally and explicitly.
+- AniList character roles are retained as MAIN, SUPPORTING, or BACKGROUND.
+- The report displays prominence totals and labels each listed character role.
+- The VA cache schema was updated, so old v1.8 cast data is automatically ignored
+  and downloaded again in batched form.
+- Batched fetching and resumable caching from v1.8 remain intact.
 
-Other features retained
-- Semantically informative tag insights
-- Grounded recommendation explanations
-- Creative staff rankings
-- Japanese voice actors with an expandable English subset
-- CSV and JSON exports
-
-Optional examples
-  py main.py username
-  py main.py username --no-staff
-  py main.py username --all-rated
+Cache
+- Stored in .anilist_cache/voice_actors.json
+- Automatically refreshed because v1.9 uses cache version 2.
+- To clear it manually:
   py main.py username --refresh-va-cache

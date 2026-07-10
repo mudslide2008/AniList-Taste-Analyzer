@@ -2,7 +2,7 @@
 from __future__ import annotations
 import json, math, statistics, time
 from pathlib import Path
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any
 from .api import graphql
 from .queries import STAFF_QUERY
@@ -149,7 +149,7 @@ def adjusted_top_rate(stat, overall_top_rate, prior_weight=8.0):
 
 
 
-VOICE_CACHE_VERSION = 1
+VOICE_CACHE_VERSION = 2
 VOICE_BATCH_SIZE = 10
 VOICE_MAX_CHARACTER_PAGES = 3
 
@@ -186,7 +186,11 @@ def _save_voice_cache(cache: dict) -> None:
 
 
 def _voice_batch_query(media_ids: list[int], character_page: int) -> str:
-    """Build one GraphQL request containing several Media aliases."""
+    """Build one GraphQL request containing several Media aliases.
+
+    Voice actors are fetched without a language filter. AniList's languageV2
+    field is then used locally to classify Japanese and English performers.
+    """
     fields = []
     for index, media_id in enumerate(media_ids):
         fields.append(f"""
@@ -195,18 +199,19 @@ def _voice_batch_query(media_ids: list[int], character_page: int) -> str:
           characters(page: {int(character_page)}, perPage: 50, sort: [ROLE, RELEVANCE, ID]) {{
             pageInfo {{ currentPage hasNextPage }}
             edges {{
+              role
               node {{ id name {{ full }} }}
-              japaneseVoiceActors: voiceActors(language: JAPANESE, sort: RELEVANCE) {{
-                id name {{ full }} siteUrl
-              }}
-              englishVoiceActors: voiceActors(language: ENGLISH, sort: RELEVANCE) {{
-                id name {{ full }} siteUrl
+              voiceActors(sort: RELEVANCE) {{
+                id
+                name {{ full }}
+                siteUrl
+                languageV2
               }}
             }}
           }}
         }}
         """)
-    return "query {\n" + "\n".join(fields) + "\n}"
+    return "query {\\n" + "\\n".join(fields) + "\\n}"
 
 
 def _empty_voice_record() -> dict:
@@ -221,7 +226,9 @@ def _empty_voice_record() -> dict:
 def _merge_voice_page(record: dict, media: dict, page: int) -> bool:
     """Merge one characters page into a cache record.
 
-    Returns whether AniList reports another page.
+    AniList's languageV2 field is authoritative here. Character role is also
+    retained so the report can distinguish main, supporting, and background
+    credits without attempting to infer importance from billing order.
     """
     characters = (media or {}).get("characters") or {}
     for edge in characters.get("edges") or []:
@@ -229,25 +236,34 @@ def _merge_voice_page(record: dict, media: dict, page: int) -> bool:
             (((edge.get("node") or {}).get("name") or {}).get("full") or "")
             .strip()
         )
-        for language, field in (
-            ("japanese", "japaneseVoiceActors"),
-            ("english", "englishVoiceActors"),
-        ):
+        role = (edge.get("role") or "UNKNOWN").upper()
+
+        for actor in edge.get("voiceActors") or []:
+            language_value = (actor.get("languageV2") or "").strip().lower()
+            if language_value == "japanese":
+                language = "japanese"
+            elif language_value == "english":
+                language = "english"
+            else:
+                continue
+
+            actor_id = actor.get("id")
+            name = ((actor.get("name") or {}).get("full") or "").strip()
+            if not name:
+                continue
+
             actors = record.setdefault(language, {})
-            for actor in edge.get(field) or []:
-                actor_id = actor.get("id")
-                name = ((actor.get("name") or {}).get("full") or "").strip()
-                if not name:
-                    continue
-                key = str(actor_id or name)
-                item = actors.setdefault(key, {
-                    "id": actor_id,
-                    "name": name,
-                    "url": actor.get("siteUrl") or "",
-                    "characters": [],
-                })
-                if character and character not in item["characters"]:
-                    item["characters"].append(character)
+            key = str(actor_id or name)
+            item = actors.setdefault(key, {
+                "id": actor_id,
+                "name": name,
+                "url": actor.get("siteUrl") or "",
+                "roles": [],
+            })
+
+            role_entry = {"character": character, "role": role}
+            if character and role_entry not in item["roles"]:
+                item["roles"].append(role_entry)
 
     pages = record.setdefault("pages_fetched", [])
     if page not in pages:
@@ -255,7 +271,6 @@ def _merge_voice_page(record: dict, media: dict, page: int) -> bool:
         pages.sort()
 
     return bool((characters.get("pageInfo") or {}).get("hasNextPage"))
-
 
 def _record_for_report(record: dict) -> dict[str, list[dict]]:
     return {
@@ -331,39 +346,79 @@ def voice_actor_stats(rows, language, overall, min_count, max_score):
     links = {}
     appearances = defaultdict(list)
     actor_names = {}
+
     for row in rows:
         rating = row.get("rating")
         if rating is None:
             continue
+
         seen = set()
         for actor in (row.get("voice_actors") or {}).get(language, []):
             actor_id = actor.get("id") or actor.get("name")
             if not actor_id or actor_id in seen:
                 continue
             seen.add(actor_id)
+
             name = actor.get("name")
             if not name:
                 continue
+
+            roles = actor.get("roles") or []
+            role_counts = Counter(
+                (role.get("role") or "UNKNOWN").upper()
+                for role in roles
+            )
+
             actor_names[actor_id] = name
             grouped[actor_id].append(float(rating))
             links[actor_id] = actor.get("url") or ""
             appearances[actor_id].append({
                 "anime": row.get("title") or "Unknown anime",
                 "anime_url": row.get("url") or "",
-                "characters": actor.get("characters") or [],
+                "roles": roles,
+                "main_count": role_counts.get("MAIN", 0),
+                "supporting_count": role_counts.get("SUPPORTING", 0),
+                "background_count": role_counts.get("BACKGROUND", 0),
                 "rating": float(rating),
             })
+
     result = []
     for actor_id, ratings in grouped.items():
-        if len(ratings) >= min_count:
-            avg = statistics.fmean(ratings)
-            stat = GroupStat(actor_names[actor_id], len(ratings), avg, avg-overall,
-                             sum(r >= max_score for r in ratings)/len(ratings), ratings)
-            stat.url = links.get(actor_id, "")
-            stat.appearances = sorted(
-                appearances[actor_id],
-                key=lambda item: (-item["rating"], item["anime"].lower()),
-            )
-            result.append(stat)
-    return sorted(result, key=lambda x: (x.top_rate, x.average, x.count), reverse=True)
+        if len(ratings) < min_count:
+            continue
 
+        avg = statistics.fmean(ratings)
+        stat = GroupStat(
+            actor_names[actor_id],
+            len(ratings),
+            avg,
+            avg - overall,
+            sum(r >= max_score for r in ratings) / len(ratings),
+            ratings,
+        )
+        stat.url = links.get(actor_id, "")
+        stat.appearances = sorted(
+            appearances[actor_id],
+            key=lambda item: (
+                -item["main_count"],
+                -item["supporting_count"],
+                -item["rating"],
+                item["anime"].lower(),
+            ),
+        )
+        stat.main_roles = sum(item["main_count"] for item in stat.appearances)
+        stat.supporting_roles = sum(item["supporting_count"] for item in stat.appearances)
+        stat.background_roles = sum(item["background_count"] for item in stat.appearances)
+        result.append(stat)
+
+    return sorted(
+        result,
+        key=lambda x: (
+            getattr(x, "main_roles", 0),
+            getattr(x, "supporting_roles", 0),
+            x.top_rate,
+            x.average,
+            x.count,
+        ),
+        reverse=True,
+    )

@@ -146,20 +146,33 @@ def linked_stat_rows(stats, overall, score_format, limit=20, show_roles=False):
             f"<td>{stat.top_rate:.0%}</td><td class='{cls}'>{top_lift:+.0%}</td>"
         )
         if show_roles:
+            prominence=[]
+            if getattr(stat,"main_roles",0):
+                prominence.append(f"{getattr(stat,'main_roles',0)} main")
+            if getattr(stat,"supporting_roles",0):
+                prominence.append(f"{getattr(stat,'supporting_roles',0)} supporting")
+            if getattr(stat,"background_roles",0):
+                prominence.append(f"{getattr(stat,'background_roles',0)} background")
+            cells += f"<td>{esc(', '.join(prominence) or '—')}</td>"
             examples=[]
             for appearance in getattr(stat,"appearances",[])[:5]:
-                roles=", ".join(appearance.get("characters") or []) or "role not listed"
+                role_parts=[]
+                for role in appearance.get("roles") or []:
+                    character=role.get("character") or "role not listed"
+                    prominence=(role.get("role") or "UNKNOWN").title()
+                    role_parts.append(f"{character} <span class='role-badge role-{prominence.lower()}'>{prominence}</span>")
+                roles=", ".join(role_parts) or "role not listed"
                 anime_name=esc(appearance.get("anime") or "Unknown anime")
                 anime_url=appearance.get("anime_url") or ""
                 anime_html=f"<a href='{esc(anime_url)}'>{anime_name}</a>" if anime_url else anime_name
-                examples.append(f"{esc(roles)} — {anime_html}")
+                examples.append(f"{roles} — {anime_html}")
             cells += f"<td>{'<br>'.join(examples) if examples else '—'}</td>"
         body.append(f"<tr>{cells}</tr>")
-    colspan=6 if show_roles else 5
+    colspan=7 if show_roles else 5
     return ''.join(body) or f"<tr><td colspan='{colspan}' class='muted'>Not enough recurring credits.</td></tr>"
 
 def people_table(title, stats, overall, score_format, note, collapsible=False, show_roles=False):
-    extra="<th>Roles in this list</th>" if show_roles else ""
+    extra="<th>Prominence</th><th>Roles in this list</th>" if show_roles else ""
     section=f"""<section><h2>{esc(title)}</h2><p class='hint'>{esc(note)}</p><div class='table-wrap'><table><thead><tr><th>Name</th><th>Anime</th><th>Average</th><th>Top-rate</th><th>Top-rate lift</th>{extra}</tr></thead><tbody>{linked_stat_rows(stats,overall,score_format,show_roles=show_roles)}</tbody></table></div></section>"""
     return f"<details><summary>{esc(title)}</summary>{section}</details>" if collapsible else section
 
@@ -196,9 +209,9 @@ def build_html(user, rows, all_entries, output, score_format, overall, stats, id
         people += people_table("Creative staff", stats["staff"], overall, score_format,
                                "Recurring directors, writers, composers, creators, and designers associated with higher-rated anime.")
         people += people_table("Japanese voice actors", stats["japanese_vas"], overall, score_format,
-                               "Japanese performers who recur across this rated list. Each actor counts at most once per anime.", show_roles=True)
+                               "Performers AniList identifies as Japanese-language actors. Main, supporting, and background character roles are shown separately.", show_roles=True)
         people += people_table("English voice actors", stats["english_vas"], overall, score_format,
-                               "English-dub performers who recur across this rated list. Coverage depends on AniList cast data.", True, show_roles=True)
+                               "Performers AniList identifies as English-language actors. Main, supporting, and background character roles are shown separately.", True, show_roles=True)
 
     secondary=group_table("Studios",stats["studios"],overall,score_format,20,False,True)
     secondary+=group_table("Source material",stats["sources"],overall,score_format,20,False,True)
@@ -220,7 +233,7 @@ section{{margin-top:28px;background:var(--panel);border:1px solid var(--line);bo
 .table-wrap{{overflow:auto}}table{{width:100%;border-collapse:collapse;min-width:680px}}th,td{{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left}}th{{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}}.positive{{color:var(--good)}}.negative{{color:var(--bad)}}.neutral{{color:var(--muted)}}
 .dist-row{{display:grid;grid-template-columns:90px 1fr 40px;gap:10px;align-items:center;margin:10px 0}}.bar{{height:12px;background:#263346;border-radius:999px;overflow:hidden}}.bar i{{display:block;height:100%;background:var(--accent);border-radius:inherit}}
 details{{margin-top:22px}}summary{{cursor:pointer;font-size:20px;font-weight:700;padding:14px 18px;background:var(--panel);border:1px solid var(--line);border-radius:12px}}details[open] summary{{border-radius:12px 12px 0 0}}details>section{{margin-top:0;border-radius:0 0 16px 16px}}.rec-details{{margin-top:12px}}.rec-details summary{{font-size:16px;background:var(--panel2);padding:10px 14px}}.rec-details .rec-block{{border-radius:0 0 12px 12px;margin-top:0}}
-footer{{margin-top:36px;color:var(--muted);font-size:13px}}@media(max-width:650px){{main{{padding:16px 10px 50px}}section,.hero{{padding:15px}}}}
+.role-badge{{display:inline-block;font-size:10px;line-height:1;padding:3px 5px;border:1px solid var(--line);border-radius:999px;color:var(--muted);vertical-align:middle}}.role-main{{color:var(--good)}}.role-supporting{{color:var(--accent)}}.role-background{{opacity:.72}}footer{{margin-top:36px;color:var(--muted);font-size:13px}}@media(max-width:650px){{main{{padding:16px 10px 50px}}section,.hero{{padding:15px}}}}
 </style></head><body><main>
 <div class='hero'><div class='muted'>Unofficial AniList taste analysis</div><h1>{esc(user['name'])}</h1><div><a href='{esc(user.get('siteUrl',''))}'>Open AniList profile</a> · Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</div>
 <div class='cards'><div class='card'><span>Rated anime</span><strong>{len(ratings)}</strong></div><div class='card'><span>Scoring system</span><strong>{esc(score_format['label'])}</strong></div><div class='card'><span>Average</span><strong>{display_score(overall,score_format)}</strong></div><div class='card'><span>Top ratings</span><strong>{top_count}</strong></div><div class='card'><span>Top-rating rate</span><strong>{top_count/len(ratings):.0%}</strong></div></div></div>
