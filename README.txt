@@ -1,4 +1,4 @@
-AniList Taste Analyzer 1.9
+AniList Taste Analyzer 1.9.1
 
 Windows
 1. Replace the previous project files with this version.
@@ -20,3 +20,7 @@ Cache
 - Automatically refreshed because v1.9 uses cache version 2.
 - To clear it manually:
   py main.py username --refresh-va-cache
+
+
+1.9.1 hotfix
+- Fixed malformed GraphQL batch query strings caused by literal \\n characters.

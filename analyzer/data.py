@@ -211,7 +211,7 @@ def _voice_batch_query(media_ids: list[int], character_page: int) -> str:
           }}
         }}
         """)
-    return "query {\\n" + "\\n".join(fields) + "\\n}"
+    return "query {\n" + "\n".join(fields) + "\n}"
 
 
 def _empty_voice_record() -> dict:
