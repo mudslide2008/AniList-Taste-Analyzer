@@ -75,6 +75,13 @@ def normalize_entries(entries, statuses, include_unrated, include_spoiler_tags, 
             "year": media.get("seasonYear"),
             "decade": f"{(media['seasonYear']//10)*10}s" if media.get("seasonYear") else "Unknown",
             "source": media.get("source") or "Unknown", "genres": media.get("genres") or [],
+            "related_ids": [
+                edge.get("node", {}).get("id")
+                for edge in ((media.get("relations") or {}).get("edges") or [])
+                if edge.get("relationType") in {"PREQUEL", "SEQUEL", "PARENT"}
+                and (edge.get("node") or {}).get("type") == "ANIME"
+                and (edge.get("node") or {}).get("id")
+            ],
             "tags": tags, "tag_details": tag_details, "studios": studios or ["Unknown"], "community_score": community,
             "community_normalized": float(community) if community else None,
             "community_display": (float(community) / 100.0 * score_format["max"]) if community else None,
@@ -149,7 +156,7 @@ def adjusted_top_rate(stat, overall_top_rate, prior_weight=8.0):
 
 
 
-VOICE_CACHE_VERSION = 2
+VOICE_CACHE_VERSION = 3
 VOICE_BATCH_SIZE = 10
 VOICE_MAX_CHARACTER_PAGES = 3
 
@@ -238,7 +245,8 @@ def _merge_voice_page(record: dict, media: dict, page: int) -> bool:
         )
         role = (edge.get("role") or "UNKNOWN").upper()
 
-        for actor in edge.get("voiceActors") or []:
+        for voice_role in edge.get("voiceActorRoles") or []:
+            actor = voice_role.get("voiceActor") or {}
             language_value = (actor.get("languageV2") or "").strip().lower()
             if language_value == "japanese":
                 language = "japanese"
@@ -261,7 +269,12 @@ def _merge_voice_page(record: dict, media: dict, page: int) -> bool:
                 "roles": [],
             })
 
-            role_entry = {"character": character, "role": role}
+            role_entry = {
+                "character": character,
+                "role": role,
+                "role_notes": (voice_role.get("roleNotes") or "").strip(),
+                "dub_group": (voice_role.get("dubGroup") or "").strip(),
+            }
             if character and role_entry not in item["roles"]:
                 item["roles"].append(role_entry)
 
@@ -341,10 +354,38 @@ def get_voice_actors(media_ids: list[int]) -> dict[int, dict[str, list[dict]]]:
         result[media_id] = _record_for_report(record)
     return result
 
+def assign_franchise_ids(rows):
+    ids = {int(row["id"]) for row in rows}
+    parent = {media_id: media_id for media_id in ids}
+
+    def find(value):
+        while parent[value] != value:
+            parent[value] = parent[parent[value]]
+            value = parent[value]
+        return value
+
+    def union(left, right):
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            smaller, larger = sorted((left_root, right_root))
+            parent[larger] = smaller
+
+    for row in rows:
+        media_id = int(row["id"])
+        for related_id in row.get("related_ids") or []:
+            related_id = int(related_id)
+            if related_id in ids:
+                union(media_id, related_id)
+
+    for row in rows:
+        row["franchise_id"] = find(int(row["id"]))
+
+
 def voice_actor_stats(rows, language, overall, min_count, max_score):
-    grouped = defaultdict(list)
+    assign_franchise_ids(rows)
+    grouped = defaultdict(dict)
     links = {}
-    appearances = defaultdict(list)
     actor_names = {}
 
     for row in rows:
@@ -352,27 +393,23 @@ def voice_actor_stats(rows, language, overall, min_count, max_score):
         if rating is None:
             continue
 
-        seen = set()
+        franchise_id = row.get("franchise_id", row.get("id"))
         for actor in (row.get("voice_actors") or {}).get(language, []):
             actor_id = actor.get("id") or actor.get("name")
-            if not actor_id or actor_id in seen:
+            if not actor_id or not actor.get("name"):
                 continue
-            seen.add(actor_id)
 
-            name = actor.get("name")
-            if not name:
-                continue
+            actor_names[actor_id] = actor["name"]
+            links[actor_id] = actor.get("url") or ""
+            franchise = grouped[actor_id].setdefault(
+                franchise_id,
+                {"ratings": [], "appearances": []},
+            )
+            franchise["ratings"].append(float(rating))
 
             roles = actor.get("roles") or []
-            role_counts = Counter(
-                (role.get("role") or "UNKNOWN").upper()
-                for role in roles
-            )
-
-            actor_names[actor_id] = name
-            grouped[actor_id].append(float(rating))
-            links[actor_id] = actor.get("url") or ""
-            appearances[actor_id].append({
+            role_counts = Counter((role.get("role") or "UNKNOWN").upper() for role in roles)
+            franchise["appearances"].append({
                 "anime": row.get("title") or "Unknown anime",
                 "anime_url": row.get("url") or "",
                 "roles": roles,
@@ -383,22 +420,32 @@ def voice_actor_stats(rows, language, overall, min_count, max_score):
             })
 
     result = []
-    for actor_id, ratings in grouped.items():
-        if len(ratings) < min_count:
+    for actor_id, franchises in grouped.items():
+        if len(franchises) < min_count:
             continue
 
-        avg = statistics.fmean(ratings)
+        franchise_ratings = [
+            statistics.fmean(payload["ratings"])
+            for payload in franchises.values()
+        ]
+        avg = statistics.fmean(franchise_ratings)
+        appearances = [
+            appearance
+            for payload in franchises.values()
+            for appearance in payload["appearances"]
+        ]
+
         stat = GroupStat(
             actor_names[actor_id],
-            len(ratings),
+            len(franchises),
             avg,
             avg - overall,
-            sum(r >= max_score for r in ratings) / len(ratings),
-            ratings,
+            sum(value >= max_score for value in franchise_ratings) / len(franchise_ratings),
+            franchise_ratings,
         )
         stat.url = links.get(actor_id, "")
         stat.appearances = sorted(
-            appearances[actor_id],
+            appearances,
             key=lambda item: (
                 -item["main_count"],
                 -item["supporting_count"],
@@ -413,12 +460,12 @@ def voice_actor_stats(rows, language, overall, min_count, max_score):
 
     return sorted(
         result,
-        key=lambda x: (
-            getattr(x, "main_roles", 0),
-            getattr(x, "supporting_roles", 0),
-            x.top_rate,
-            x.average,
-            x.count,
+        key=lambda stat: (
+            getattr(stat, "main_roles", 0),
+            getattr(stat, "supporting_roles", 0),
+            stat.count,
+            stat.top_rate,
+            stat.average,
         ),
         reverse=True,
     )

@@ -30,6 +30,12 @@ query ($userName: String!) {
           meanScore averageScore popularity favourites siteUrl
           tags { name category rank isMediaSpoiler isGeneralSpoiler }
           studios(isMain: true) { nodes { id name siteUrl } }
+          relations {
+            edges {
+              relationType(version: 2)
+              node { id type }
+            }
+          }
         }
       }
     }

@@ -159,8 +159,11 @@ def linked_stat_rows(stats, overall, score_format, limit=20, show_roles=False):
                 role_parts=[]
                 for role in appearance.get("roles") or []:
                     character=role.get("character") or "role not listed"
+                    role_notes=(role.get("role_notes") or "").strip()
+                    if role_notes:
+                        character=f"{character} ({role_notes})"
                     prominence=(role.get("role") or "UNKNOWN").title()
-                    role_parts.append(f"{character} <span class='role-badge role-{prominence.lower()}'>{prominence}</span>")
+                    role_parts.append(f"{esc(character)} <span class='role-badge role-{prominence.lower()}'>{prominence}</span>")
                 roles=", ".join(role_parts) or "role not listed"
                 anime_name=esc(appearance.get("anime") or "Unknown anime")
                 anime_url=appearance.get("anime_url") or ""
@@ -223,9 +226,9 @@ def filter_va_stats_by_role(stats, role_name):
 def va_role_table(title, stats, overall, score_format, role_name, collapsible=False):
     role_stats=filter_va_stats_by_role(stats,role_name)
     note_map={
-        "MAIN":"Recurring performers linked through MAIN-character roles.",
-        "SUPPORTING":"Recurring performers linked through SUPPORTING-character roles.",
-        "BACKGROUND":"Recurring performers linked through BACKGROUND-character roles.",
+        "MAIN":"Recurring performers linked through MAIN-character roles across distinct franchises. Separate seasons count once.",
+        "SUPPORTING":"Recurring performers linked through SUPPORTING-character roles across distinct franchises. Separate seasons count once.",
+        "BACKGROUND":"Recurring performers linked through BACKGROUND-character roles across distinct franchises. Separate seasons count once.",
     }
     return people_table(
         title,
