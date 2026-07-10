@@ -1,4 +1,4 @@
-AniList Taste Analyzer 1.5
+AniList Taste Analyzer 1.6
 
 Windows
 1. Double-click run_anime_analyzer.bat
@@ -40,3 +40,12 @@ What changed in 1.5
 - Creative Staff is restored as a prominent section
 - Added recurring Japanese voice actors
 - Added expandable English voice actor rankings
+
+
+What changed in 1.6
+- Main tag ranking now favors semantically informative tags, not just correlation
+- Descriptive tags such as Snowscape remain visible in a raw-correlation table
+- Voice actor fetching now paginates through up to 150 character credits per anime
+- Japanese and English VA tables now require only two recurring anime
+- Recommendation explanations cite actual favorite seed shows and meaningful overlap
+- Generic or unsupported recommendation claims were removed

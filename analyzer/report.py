@@ -6,6 +6,7 @@ from datetime import datetime
 from .util import esc, display_score
 from .data import confidence_adjusted, adjusted_top_rate
 from .profile import confidence_label
+from .recommendations import recommendation_reason
 
 def stat_rows(stats, overall, score_format, limit=20, rank_by_top_rate=False):
     overall_top=sum(s.top_rate*s.count for s in stats)/sum(s.count for s in stats) if stats else 0
@@ -22,38 +23,84 @@ def group_table(title, stats, overall, score_format, limit=20, rank_by_top_rate=
     section=f"""<section><h2>{esc(title)}</h2><p class='hint'>{esc(note or 'Ranked with a small-sample adjustment.')}</p><div class='table-wrap'><table><thead><tr><th>Name</th><th>Count</th><th>Average</th><th>Avg lift</th><th>Top-rate</th><th>Top-rate lift</th></tr></thead><tbody>{stat_rows(stats,overall,score_format,limit,rank_by_top_rate)}</tbody></table></div></section>"""
     return f"<details><summary>{esc(title)}</summary>{section}</details>" if collapsible else section
 
-def tag_usefulness(stat, overall_top, max_score):
+
+# Semantic value estimates how much a tag describes the core viewing experience.
+# Low-value tags are still shown in the complete table; they simply do not
+# dominate the main insight list because of accidental correlation.
+LOW_SEMANTIC_TAGS = {
+    "CGI", "Rotoscoping", "Achromatic", "Snowscape", "Desert", "Coastal",
+    "Rural", "Urban", "Foreign", "Primarily Male Cast", "Primarily Female Cast",
+    "Primarily Teen Cast", "Primarily Adult Cast", "Primarily Child Cast",
+    "Heterosexual", "Bisexual", "Asexual", "Aromantic", "Flat Chest",
+    "Tanned Skin", "Nudity", "Male Nudity", "Female Nudity", "Feet", "Chibi",
+}
+MEDIUM_SEMANTIC_TAGS = {
+    "Male Protagonist", "Female Protagonist", "Elf", "Goblin", "Demons",
+    "Vampire", "Monster Girl", "Monster Boy", "Animals", "Kemonomimi",
+    "Nekomimi", "Guns", "Swordplay", "Spearplay", "Archery", "Trains",
+    "School", "Urban Fantasy", "Medieval", "Historical", "Isekai",
+}
+
+
+def tag_semantic_weight(name: str) -> float:
+    if name in LOW_SEMANTIC_TAGS:
+        return 0.20
+    if name in MEDIUM_SEMANTIC_TAGS:
+        return 0.60
+    return 1.0
+
+
+def tag_predictive_strength(stat, overall_top, max_score):
     reliability = stat.count / (stat.count + 8.0)
     top_signal = abs(stat.top_rate - overall_top)
     avg_signal = abs(stat.lift) / max_score if max_score else 0.0
     return reliability * (0.72 * top_signal + 0.28 * avg_signal)
+
+
+def tag_insight_score(stat, overall_top, max_score):
+    return tag_predictive_strength(stat, overall_top, max_score) * tag_semantic_weight(stat.name)
+
 
 def tag_sections(all_tag_stats, overall, score_format):
     if not all_tag_stats:
         return "<section><h2>Tags</h2><p class='muted'>Not enough tag data.</p></section>"
     total_mentions = sum(s.count for s in all_tag_stats)
     overall_top = sum(s.top_rate * s.count for s in all_tag_stats) / total_mentions if total_mentions else 0.0
-    ranked = sorted(all_tag_stats, key=lambda s: (tag_usefulness(s, overall_top, score_format["max"]), s.count), reverse=True)
-    max_utility = max((tag_usefulness(s, overall_top, score_format["max"]) for s in ranked), default=1.0) or 1.0
+    insight_ranked = sorted(
+        all_tag_stats,
+        key=lambda s: (tag_insight_score(s, overall_top, score_format["max"]), s.count),
+        reverse=True,
+    )
+    predictive_ranked = sorted(
+        all_tag_stats,
+        key=lambda s: (tag_predictive_strength(s, overall_top, score_format["max"]), s.count),
+        reverse=True,
+    )
+    max_insight = max((tag_insight_score(s, overall_top, score_format["max"]) for s in insight_ranked), default=1.0) or 1.0
+    max_predictive = max((tag_predictive_strength(s, overall_top, score_format["max"]) for s in predictive_ranked), default=1.0) or 1.0
 
-    def rows(stats):
-        body=[]
+    def rows(stats, mode):
+        body = []
         for stat in stats:
-            utility = 100 * tag_usefulness(stat, overall_top, score_format["max"]) / max_utility
+            raw = tag_insight_score(stat, overall_top, score_format["max"]) if mode == "insight" else tag_predictive_strength(stat, overall_top, score_format["max"])
+            denominator = max_insight if mode == "insight" else max_predictive
+            score = 100 * raw / denominator
             top_lift = stat.top_rate - overall_top
-            direction = "Positive" if (top_lift + stat.lift/score_format["max"]) > 0 else "Negative"
+            direction = "Positive" if (top_lift + stat.lift / score_format["max"]) > 0 else "Negative"
             cls = "positive" if direction == "Positive" else "negative"
+            semantic = "Core" if tag_semantic_weight(stat.name) >= .9 else "Supporting" if tag_semantic_weight(stat.name) >= .5 else "Descriptive"
             body.append(
-                f"<tr><td>{esc(stat.name)}</td><td>{utility:.0f}</td><td>{stat.count}</td>"
-                f"<td class='{cls}'>{direction}</td><td>{display_score(stat.average,score_format)}</td>"
+                f"<tr><td>{esc(stat.name)}</td><td>{score:.0f}</td><td>{semantic}</td><td>{stat.count}</td>"
+                f"<td class='{cls}'>{direction}</td><td>{display_score(stat.average, score_format)}</td>"
                 f"<td>{stat.top_rate:.0%}</td><td class='{cls}'>{top_lift:+.0%}</td></tr>"
             )
-        return ''.join(body) or "<tr><td colspan='7' class='muted'>No tags in this range.</td></tr>"
+        return ''.join(body) or "<tr><td colspan='8' class='muted'>No tags in this range.</td></tr>"
 
-    head="<thead><tr><th>Tag</th><th>Usefulness</th><th>Count</th><th>Direction</th><th>Average</th><th>Top-rate</th><th>Top-rate lift</th></tr></thead>"
-    main=f"""<section><h2>Most useful tags</h2><p class='hint'>Usefulness combines rating impact with sample reliability. A tag can be useful because it predicts either unusually high or unusually low ratings.</p><div class='table-wrap'><table>{head}<tbody>{rows(ranked[:20])}</tbody></table></div></section>"""
-    more=f"""<details><summary>All ranked tags ({len(ranked)})</summary><section><h2>All ranked tags</h2><p class='hint'>Rarer tags remain visible, but their usefulness score is reduced to reflect uncertainty.</p><div class='table-wrap'><table>{head}<tbody>{rows(ranked)}</tbody></table></div></section></details>"""
-    return main+more
+    head = "<thead><tr><th>Tag</th><th>Insight</th><th>Role</th><th>Count</th><th>Direction</th><th>Average</th><th>Top-rate</th><th>Top-rate lift</th></tr></thead>"
+    main = f"""<section><h2>Most informative tags</h2><p class='hint'>Ranks tags by both predictive strength and how much they describe the core viewing experience. Purely visual, geographic, demographic, or technical tags are down-weighted—not removed.</p><div class='table-wrap'><table>{head}<tbody>{rows(insight_ranked[:20], 'insight')}</tbody></table></div></section>"""
+    predictive = f"""<details><summary>Strongest raw tag correlations ({len(predictive_ranked)})</summary><section><h2>Strongest raw tag correlations</h2><p class='hint'>This view ignores semantic usefulness, so incidental tags such as weather or scenery may rank highly when they happen to correlate with ratings.</p><div class='table-wrap'><table>{head}<tbody>{rows(predictive_ranked, 'predictive')}</tbody></table></div></section></details>"""
+    return main + predictive
+
 
 def show_table(title, rows, score_format, limit=20):
     body=[]
@@ -69,15 +116,7 @@ def rec_table(title, recs, score_format):
     body=[]
     for rec in recs:
         community=(rec.get("community")/100*score_format["max"]) if rec.get("community") else None
-        if title=="Because you loved…":
-            seed=(rec.get("seed_titles") or ["a favorite"])[0]
-            reason=f"Because you loved {seed}"
-        elif title=="Hidden gems":
-            reason="Lower-popularity match"
-        elif title=="Outside your comfort zone":
-            reason="Strong community reception despite weaker profile overlap"
-        else:
-            reason=", ".join(rec.get("reasons") or []) or "recommended from multiple favorites"
+        reason = recommendation_reason(rec, title)
         body.append(f"<tr><td><a href='{esc(rec['url'])}'>{esc(rec['title'])}</a></td><td>{esc(rec.get('year') or '—')}</td><td>{display_score(community,score_format)}</td><td>{esc(reason)}</td></tr>")
     return f"<section class='rec-block'><h3>{esc(title)}</h3><div class='table-wrap'><table><thead><tr><th>Anime</th><th>Year</th><th>Community</th><th>Why</th></tr></thead><tbody>{''.join(body)}</tbody></table></div></section>"
 

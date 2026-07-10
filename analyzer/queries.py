@@ -50,7 +50,7 @@ query ($ids: [Int]) {
             id
             title { userPreferred romaji english }
             format seasonYear genres meanScore averageScore popularity siteUrl
-            tags { name rank isMediaSpoiler isGeneralSpoiler }
+            tags { name category rank isMediaSpoiler isGeneralSpoiler }
           }
         }
       }
@@ -76,14 +76,15 @@ query ($ids: [Int], $page: Int) {
 """
 
 
+
 VOICE_ACTOR_QUERY = r"""
-query ($ids: [Int], $page: Int) {
-  Page(page: $page, perPage: 50) {
+query ($ids: [Int], $characterPage: Int!) {
+  Page(page: 1, perPage: 25) {
     media(id_in: $ids, type: ANIME) {
       id
-      characters(perPage: 25, sort: [ROLE, RELEVANCE, ID]) {
+      characters(page: $characterPage, perPage: 50, sort: [ROLE, RELEVANCE, ID]) {
+        pageInfo { currentPage hasNextPage }
         edges {
-          role
           japaneseVoiceActors: voiceActors(language: JAPANESE, sort: RELEVANCE) {
             id
             name { full }

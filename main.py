@@ -61,8 +61,8 @@ def main():
             "formats":group_stats(rated,"format",overall,max(3,args.min_count),max_score),
             "decades":group_stats(rated,"decade",overall,1,max_score),
             "staff":staff_stats(rated,overall,max(3,args.min_count),max_score) if not args.no_staff else [],
-            "japanese_vas":voice_actor_stats(rated,"japanese",overall,max(3,args.min_count),max_score) if not args.no_staff else [],
-            "english_vas":voice_actor_stats(rated,"english",overall,max(3,args.min_count),max_score) if not args.no_staff else [],
+            "japanese_vas":voice_actor_stats(rated,"japanese",overall,2,max_score) if not args.no_staff else [],
+            "english_vas":voice_actor_stats(rated,"english",overall,2,max_score) if not args.no_staff else [],
         }
         high_tag_stats=[s for s in stats["all_tags"] if s.count>=8]
         identity=build_identity_profile(rated,stats["genres"],high_tag_stats,overall,max_score)

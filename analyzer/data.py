@@ -48,12 +48,18 @@ def normalize_entries(entries, statuses, include_unrated, include_spoiler_tags, 
         title_data = media.get("title") or {}
         title = title_data.get("english") or title_data.get("userPreferred") or title_data.get("romaji") or str(media["id"])
         tags = []
+        tag_details = []
         for tag in media.get("tags") or []:
             if tag.get("rank", 0) < 20:
                 continue
             if not include_spoiler_tags and (tag.get("isMediaSpoiler") or tag.get("isGeneralSpoiler")):
                 continue
             tags.append(tag["name"])
+            tag_details.append({
+                "name": tag["name"],
+                "category": tag.get("category") or "Other",
+                "rank": tag.get("rank") or 0,
+            })
         studios = [s["name"] for s in ((media.get("studios") or {}).get("nodes") or [])]
         community = media.get("meanScore") or media.get("averageScore")
         selected.append({
@@ -68,7 +74,7 @@ def normalize_entries(entries, statuses, include_unrated, include_spoiler_tags, 
             "year": media.get("seasonYear"),
             "decade": f"{(media['seasonYear']//10)*10}s" if media.get("seasonYear") else "Unknown",
             "source": media.get("source") or "Unknown", "genres": media.get("genres") or [],
-            "tags": tags, "studios": studios or ["Unknown"], "community_score": community,
+            "tags": tags, "tag_details": tag_details, "studios": studios or ["Unknown"], "community_score": community,
             "community_normalized": float(community) if community else None,
             "community_display": (float(community) / 100.0 * score_format["max"]) if community else None,
             "popularity": media.get("popularity") or 0, "favourites": media.get("favourites") or 0,
@@ -141,27 +147,54 @@ def adjusted_top_rate(stat, overall_top_rate, prior_weight=8.0):
     return (top_count+prior_weight*overall_top_rate)/(stat.count+prior_weight)
 
 
+
 def get_voice_actors(media_ids: list[int]) -> dict[int, dict[str, list[dict]]]:
+    """Fetch recurring Japanese and English performers.
+
+    AniList paginates character credits independently for every anime. Fetch up
+    to three 50-character pages so long-running or ensemble shows do not lose
+    most of their cast. Each actor is deduplicated once per anime.
+    """
     result: dict[int, dict[str, list[dict]]] = defaultdict(lambda: {"japanese": [], "english": []})
-    for batch_number, batch in enumerate(chunks(media_ids, 50), start=1):
-        print(f"Fetching voice actor batch {batch_number}/{math.ceil(len(media_ids)/50)}...")
-        data = graphql(VOICE_ACTOR_QUERY, {"ids": batch, "page": 1})
-        for media in data.get("Page", {}).get("media") or []:
-            seen = {"japanese": set(), "english": set()}
-            for edge in ((media.get("characters") or {}).get("edges") or []):
-                for key, field in (("japanese", "japaneseVoiceActors"), ("english", "englishVoiceActors")):
-                    for actor in edge.get(field) or []:
-                        actor_id = actor.get("id")
-                        name = ((actor.get("name") or {}).get("full") or "").strip()
-                        if not name or actor_id in seen[key]:
-                            continue
-                        seen[key].add(actor_id)
-                        result[media["id"]][key].append({
-                            "id": actor_id,
-                            "name": name,
-                            "url": actor.get("siteUrl") or "",
-                        })
-        time.sleep(0.4)
+    batches = list(chunks(media_ids, 25))
+    for batch_number, batch in enumerate(batches, start=1):
+        print(f"Fetching voice actors batch {batch_number}/{len(batches)}...")
+        active_ids = set(batch)
+        seen_by_media = {
+            media_id: {"japanese": set(), "english": set()}
+            for media_id in batch
+        }
+        for character_page in range(1, 4):
+            if not active_ids:
+                break
+            data = graphql(VOICE_ACTOR_QUERY, {
+                "ids": sorted(active_ids),
+                "characterPage": character_page,
+            })
+            next_active = set()
+            for media in (data.get("Page") or {}).get("media") or []:
+                media_id = media.get("id")
+                if not media_id:
+                    continue
+                characters = media.get("characters") or {}
+                if (characters.get("pageInfo") or {}).get("hasNextPage"):
+                    next_active.add(media_id)
+                for edge in characters.get("edges") or []:
+                    for key, field in (("japanese", "japaneseVoiceActors"), ("english", "englishVoiceActors")):
+                        for actor in edge.get(field) or []:
+                            actor_id = actor.get("id")
+                            name = ((actor.get("name") or {}).get("full") or "").strip()
+                            identity = actor_id or name
+                            if not name or identity in seen_by_media[media_id][key]:
+                                continue
+                            seen_by_media[media_id][key].add(identity)
+                            result[media_id][key].append({
+                                "id": actor_id,
+                                "name": name,
+                                "url": actor.get("siteUrl") or "",
+                            })
+            active_ids = next_active
+            time.sleep(0.35)
     return result
 
 
