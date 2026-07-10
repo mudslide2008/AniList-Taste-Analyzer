@@ -4,7 +4,7 @@ import math, statistics, time
 from collections import defaultdict
 from typing import Any
 from .api import graphql
-from .queries import STAFF_QUERY
+from .queries import STAFF_QUERY, VOICE_ACTOR_QUERY
 from .util import chunks, fuzzy_date
 from .models import GroupStat
 
@@ -88,6 +88,11 @@ def normalize_entries(entries, statuses, include_unrated, include_spoiler_tags, 
                 )):
                     credits.append({"name": name, "role": role, "url": node.get("siteUrl") or ""})
             row["staff"] = credits
+
+    if fetch_staff_data and selected:
+        voice_map = get_voice_actors([row["id"] for row in selected])
+        for row in selected:
+            row["voice_actors"] = voice_map.get(row["id"], {"japanese": [], "english": []})
     return selected
 
 def group_stats(rows, field, overall, min_count, max_score):
@@ -134,3 +139,55 @@ def confidence_adjusted(stat, overall, prior_weight=5.0):
 def adjusted_top_rate(stat, overall_top_rate, prior_weight=8.0):
     top_count=stat.top_rate*stat.count
     return (top_count+prior_weight*overall_top_rate)/(stat.count+prior_weight)
+
+
+def get_voice_actors(media_ids: list[int]) -> dict[int, dict[str, list[dict]]]:
+    result: dict[int, dict[str, list[dict]]] = defaultdict(lambda: {"japanese": [], "english": []})
+    for batch_number, batch in enumerate(chunks(media_ids, 50), start=1):
+        print(f"Fetching voice actor batch {batch_number}/{math.ceil(len(media_ids)/50)}...")
+        data = graphql(VOICE_ACTOR_QUERY, {"ids": batch, "page": 1})
+        for media in data.get("Page", {}).get("media") or []:
+            seen = {"japanese": set(), "english": set()}
+            for edge in ((media.get("characters") or {}).get("edges") or []):
+                for key, field in (("japanese", "japaneseVoiceActors"), ("english", "englishVoiceActors")):
+                    for actor in edge.get(field) or []:
+                        actor_id = actor.get("id")
+                        name = ((actor.get("name") or {}).get("full") or "").strip()
+                        if not name or actor_id in seen[key]:
+                            continue
+                        seen[key].add(actor_id)
+                        result[media["id"]][key].append({
+                            "id": actor_id,
+                            "name": name,
+                            "url": actor.get("siteUrl") or "",
+                        })
+        time.sleep(0.4)
+    return result
+
+
+def voice_actor_stats(rows, language, overall, min_count, max_score):
+    grouped = defaultdict(list)
+    links = {}
+    for row in rows:
+        rating = row.get("rating")
+        if rating is None:
+            continue
+        seen = set()
+        for actor in (row.get("voice_actors") or {}).get(language, []):
+            actor_id = actor.get("id") or actor.get("name")
+            if actor_id in seen:
+                continue
+            seen.add(actor_id)
+            name = actor.get("name")
+            if name:
+                grouped[name].append(float(rating))
+                links[name] = actor.get("url") or ""
+    result = []
+    for name, ratings in grouped.items():
+        if len(ratings) >= min_count:
+            avg = statistics.fmean(ratings)
+            stat = GroupStat(name, len(ratings), avg, avg-overall,
+                             sum(r >= max_score for r in ratings)/len(ratings), ratings)
+            stat.url = links.get(name, "")
+            result.append(stat)
+    return sorted(result, key=lambda x: (x.average, x.count), reverse=True)

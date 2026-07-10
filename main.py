@@ -5,7 +5,7 @@ from pathlib import Path
 from analyzer.api import graphql, AnalyzerError
 from analyzer.queries import LIST_QUERY
 from analyzer.util import safe_name, score_info
-from analyzer.data import flatten_entries, normalize_entries, group_stats, staff_stats
+from analyzer.data import flatten_entries, normalize_entries, group_stats, staff_stats, voice_actor_stats
 from analyzer.profile import build_identity_profile
 from analyzer.recommendations import fetch_recommendations, categorize_recommendations
 from analyzer.report import build_html
@@ -61,6 +61,8 @@ def main():
             "formats":group_stats(rated,"format",overall,max(3,args.min_count),max_score),
             "decades":group_stats(rated,"decade",overall,1,max_score),
             "staff":staff_stats(rated,overall,max(3,args.min_count),max_score) if not args.no_staff else [],
+            "japanese_vas":voice_actor_stats(rated,"japanese",overall,max(3,args.min_count),max_score) if not args.no_staff else [],
+            "english_vas":voice_actor_stats(rated,"english",overall,max(3,args.min_count),max_score) if not args.no_staff else [],
         }
         high_tag_stats=[s for s in stats["all_tags"] if s.count>=8]
         identity=build_identity_profile(rated,stats["genres"],high_tag_stats,overall,max_score)

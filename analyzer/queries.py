@@ -74,3 +74,29 @@ query ($ids: [Int], $page: Int) {
   }
 }
 """
+
+
+VOICE_ACTOR_QUERY = r"""
+query ($ids: [Int], $page: Int) {
+  Page(page: $page, perPage: 50) {
+    media(id_in: $ids, type: ANIME) {
+      id
+      characters(perPage: 25, sort: [ROLE, RELEVANCE, ID]) {
+        edges {
+          role
+          japaneseVoiceActors: voiceActors(language: JAPANESE, sort: RELEVANCE) {
+            id
+            name { full }
+            siteUrl
+          }
+          englishVoiceActors: voiceActors(language: ENGLISH, sort: RELEVANCE) {
+            id
+            name { full }
+            siteUrl
+          }
+        }
+      }
+    }
+  }
+}
+"""

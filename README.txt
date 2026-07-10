@@ -1,4 +1,4 @@
-AniList Taste Analyzer 1.4
+AniList Taste Analyzer 1.5
 
 Windows
 1. Double-click run_anime_analyzer.bat
@@ -31,3 +31,12 @@ Optional examples
   py main.py username --no-staff
   py main.py username --all-rated
   py main.py username --min-count 10
+
+
+What changed in 1.5
+- Best Matches remains visible; other recommendation categories are collapsed
+- Tags are ranked by usefulness, combining predictive impact and sample reliability
+- Full tag ranking remains expandable
+- Creative Staff is restored as a prominent section
+- Added recurring Japanese voice actors
+- Added expandable English voice actor rankings
