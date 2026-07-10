@@ -161,7 +161,7 @@ def linked_stat_rows(stats, overall, score_format, limit=20, show_roles=False):
                     character=role.get("character") or "role not listed"
                     role_notes=(role.get("role_notes") or "").strip()
                     if role_notes:
-                        character=f"{character} ({role_notes})"
+                        character=f"{character} — {role_notes}"
                     prominence=(role.get("role") or "UNKNOWN").title()
                     role_parts.append(f"{esc(character)} <span class='role-badge role-{prominence.lower()}'>{prominence}</span>")
                 roles=", ".join(role_parts) or "role not listed"

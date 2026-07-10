@@ -156,7 +156,7 @@ def adjusted_top_rate(stat, overall_top_rate, prior_weight=8.0):
 
 
 
-VOICE_CACHE_VERSION = 3
+VOICE_CACHE_VERSION = 4
 VOICE_BATCH_SIZE = 10
 VOICE_MAX_CHARACTER_PAGES = 3
 
@@ -245,38 +245,37 @@ def _merge_voice_page(record: dict, media: dict, page: int) -> bool:
         )
         role = (edge.get("role") or "UNKNOWN").upper()
 
-        for voice_role in edge.get("voiceActorRoles") or []:
-            actor = voice_role.get("voiceActor") or {}
+        actors_by_language = {"japanese": [], "english": []}
+        for actor in edge.get("voiceActors") or []:
             language_value = (actor.get("languageV2") or "").strip().lower()
-            if language_value == "japanese":
-                language = "japanese"
-            elif language_value == "english":
-                language = "english"
-            else:
-                continue
+            if language_value in actors_by_language:
+                actors_by_language[language_value].append(actor)
 
-            actor_id = actor.get("id")
-            name = ((actor.get("name") or {}).get("full") or "").strip()
-            if not name:
-                continue
+        for language, credited_actors in actors_by_language.items():
+            multiple_credit = len(credited_actors) > 1
+            for actor in credited_actors:
+                actor_id = actor.get("id")
+                name = ((actor.get("name") or {}).get("full") or "").strip()
+                if not name:
+                    continue
 
-            actors = record.setdefault(language, {})
-            key = str(actor_id or name)
-            item = actors.setdefault(key, {
-                "id": actor_id,
-                "name": name,
-                "url": actor.get("siteUrl") or "",
-                "roles": [],
-            })
+                actors = record.setdefault(language, {})
+                key = str(actor_id or name)
+                item = actors.setdefault(key, {
+                    "id": actor_id,
+                    "name": name,
+                    "url": actor.get("siteUrl") or "",
+                    "roles": [],
+                })
 
-            role_entry = {
-                "character": character,
-                "role": role,
-                "role_notes": (voice_role.get("roleNotes") or "").strip(),
-                "dub_group": (voice_role.get("dubGroup") or "").strip(),
-            }
-            if character and role_entry not in item["roles"]:
-                item["roles"].append(role_entry)
+                role_entry = {
+                    "character": character,
+                    "role": role,
+                    "role_notes": "Multiple credited performers" if multiple_credit else "",
+                    "dub_group": "",
+                }
+                if character and role_entry not in item["roles"]:
+                    item["roles"].append(role_entry)
 
     pages = record.setdefault("pages_fetched", [])
     if page not in pages:
