@@ -1,0 +1,4 @@
+.anilist_cache/
+__pycache__/
+*.pyc
+anilist_report_*/

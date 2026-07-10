@@ -1,10 +1,11 @@
 
 from __future__ import annotations
-import math, statistics, time
+import json, math, statistics, time
+from pathlib import Path
 from collections import defaultdict
 from typing import Any
 from .api import graphql
-from .queries import STAFF_QUERY, VOICE_ACTOR_QUERY
+from .queries import STAFF_QUERY
 from .util import chunks, fuzzy_date
 from .models import GroupStat
 
@@ -148,55 +149,181 @@ def adjusted_top_rate(stat, overall_top_rate, prior_weight=8.0):
 
 
 
-def get_voice_actors(media_ids: list[int]) -> dict[int, dict[str, list[dict]]]:
-    """Fetch Japanese and English cast directly for each anime.
+VOICE_CACHE_VERSION = 1
+VOICE_BATCH_SIZE = 10
+VOICE_MAX_CHARACTER_PAGES = 3
 
-    A per-anime query is slower than the previous batched query, but avoids
-    nested pagination behaving inconsistently across multiple media. Character
-    names are retained so recurring actors can be shown with concrete roles.
-    """
-    result: dict[int, dict[str, list[dict]]] = defaultdict(
-        lambda: {"japanese": [], "english": []}
+
+def _voice_cache_path() -> Path:
+    """Store shared cast metadata beside the project, not inside each report."""
+    project_root = Path(__file__).resolve().parent.parent
+    return project_root / ".anilist_cache" / "voice_actors.json"
+
+
+def _load_voice_cache() -> dict:
+    path = _voice_cache_path()
+    if not path.exists():
+        return {"version": VOICE_CACHE_VERSION, "media": {}}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("version") != VOICE_CACHE_VERSION:
+            return {"version": VOICE_CACHE_VERSION, "media": {}}
+        payload.setdefault("media", {})
+        return payload
+    except (OSError, json.JSONDecodeError):
+        return {"version": VOICE_CACHE_VERSION, "media": {}}
+
+
+def _save_voice_cache(cache: dict) -> None:
+    path = _voice_cache_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(cache, ensure_ascii=False, indent=2),
+        encoding="utf-8",
     )
-    total = len(media_ids)
-    for index, media_id in enumerate(media_ids, start=1):
-        print(f"Fetching voice actors {index}/{total}...")
-        seen = {"japanese": {}, "english": {}}
-        character_page = 1
-        while character_page <= 6:  # Up to 300 character credits per anime.
-            data = graphql(VOICE_ACTOR_QUERY, {
-                "id": media_id,
-                "characterPage": character_page,
-            })
-            media = data.get("Media") or {}
-            characters = media.get("characters") or {}
-            for edge in characters.get("edges") or []:
-                character = (((edge.get("node") or {}).get("name") or {}).get("full") or "").strip()
-                for language, field in (
-                    ("japanese", "japaneseVoiceActors"),
-                    ("english", "englishVoiceActors"),
-                ):
-                    for actor in edge.get(field) or []:
-                        actor_id = actor.get("id")
-                        name = ((actor.get("name") or {}).get("full") or "").strip()
-                        identity = actor_id or name
-                        if not name:
-                            continue
-                        item = seen[language].setdefault(identity, {
-                            "id": actor_id,
-                            "name": name,
-                            "url": actor.get("siteUrl") or "",
-                            "characters": [],
-                        })
-                        if character and character not in item["characters"]:
-                            item["characters"].append(character)
-            if not (characters.get("pageInfo") or {}).get("hasNextPage"):
+    temporary.replace(path)
+
+
+def _voice_batch_query(media_ids: list[int], character_page: int) -> str:
+    """Build one GraphQL request containing several Media aliases."""
+    fields = []
+    for index, media_id in enumerate(media_ids):
+        fields.append(f"""
+        media_{index}: Media(id: {int(media_id)}, type: ANIME) {{
+          id
+          characters(page: {int(character_page)}, perPage: 50, sort: [ROLE, RELEVANCE, ID]) {{
+            pageInfo {{ currentPage hasNextPage }}
+            edges {{
+              node {{ id name {{ full }} }}
+              japaneseVoiceActors: voiceActors(language: JAPANESE, sort: RELEVANCE) {{
+                id name {{ full }} siteUrl
+              }}
+              englishVoiceActors: voiceActors(language: ENGLISH, sort: RELEVANCE) {{
+                id name {{ full }} siteUrl
+              }}
+            }}
+          }}
+        }}
+        """)
+    return "query {\n" + "\n".join(fields) + "\n}"
+
+
+def _empty_voice_record() -> dict:
+    return {
+        "japanese": {},
+        "english": {},
+        "pages_fetched": [],
+        "complete": False,
+    }
+
+
+def _merge_voice_page(record: dict, media: dict, page: int) -> bool:
+    """Merge one characters page into a cache record.
+
+    Returns whether AniList reports another page.
+    """
+    characters = (media or {}).get("characters") or {}
+    for edge in characters.get("edges") or []:
+        character = (
+            (((edge.get("node") or {}).get("name") or {}).get("full") or "")
+            .strip()
+        )
+        for language, field in (
+            ("japanese", "japaneseVoiceActors"),
+            ("english", "englishVoiceActors"),
+        ):
+            actors = record.setdefault(language, {})
+            for actor in edge.get(field) or []:
+                actor_id = actor.get("id")
+                name = ((actor.get("name") or {}).get("full") or "").strip()
+                if not name:
+                    continue
+                key = str(actor_id or name)
+                item = actors.setdefault(key, {
+                    "id": actor_id,
+                    "name": name,
+                    "url": actor.get("siteUrl") or "",
+                    "characters": [],
+                })
+                if character and character not in item["characters"]:
+                    item["characters"].append(character)
+
+    pages = record.setdefault("pages_fetched", [])
+    if page not in pages:
+        pages.append(page)
+        pages.sort()
+
+    return bool((characters.get("pageInfo") or {}).get("hasNextPage"))
+
+
+def _record_for_report(record: dict) -> dict[str, list[dict]]:
+    return {
+        "japanese": list((record.get("japanese") or {}).values()),
+        "english": list((record.get("english") or {}).values()),
+    }
+
+
+def get_voice_actors(media_ids: list[int]) -> dict[int, dict[str, list[dict]]]:
+    """Fetch cast metadata in batches and persist it in a resumable cache.
+
+    The first run normally needs about one request per ten anime, plus extra
+    batched requests only for unusually large casts. Later runs reuse cached
+    media across every analyzed user.
+    """
+    requested_ids = list(dict.fromkeys(int(media_id) for media_id in media_ids))
+    cache = _load_voice_cache()
+    cached_media = cache["media"]
+
+    missing_ids = [
+        media_id
+        for media_id in requested_ids
+        if not (cached_media.get(str(media_id)) or {}).get("complete")
+    ]
+
+    if missing_ids:
+        total_batches = math.ceil(len(missing_ids) / VOICE_BATCH_SIZE)
+        print(
+            f"Voice cast cache: {len(requested_ids) - len(missing_ids)} cached, "
+            f"{len(missing_ids)} to fetch in about {total_batches} initial batches."
+        )
+
+    for batch_number, batch in enumerate(chunks(missing_ids, VOICE_BATCH_SIZE), start=1):
+        pending = list(batch)
+        for page in range(1, VOICE_MAX_CHARACTER_PAGES + 1):
+            if not pending:
                 break
-            character_page += 1
-            time.sleep(0.18)
-        for language in ("japanese", "english"):
-            result[media_id][language] = list(seen[language].values())
-        time.sleep(0.18)
+
+            print(
+                f"Fetching voice cast batch {batch_number}/"
+                f"{math.ceil(len(missing_ids)/VOICE_BATCH_SIZE)} "
+                f"(character page {page}, {len(pending)} anime)..."
+            )
+            query = _voice_batch_query(pending, page)
+            response = graphql(query, {})
+
+            next_page_ids = []
+            for alias_index, media_id in enumerate(pending):
+                media = response.get(f"media_{alias_index}") or {}
+                record = cached_media.setdefault(str(media_id), _empty_voice_record())
+                has_next = _merge_voice_page(record, media, page)
+                if has_next and page < VOICE_MAX_CHARACTER_PAGES:
+                    next_page_ids.append(media_id)
+                else:
+                    record["complete"] = True
+
+            # Save after every successful request so an interrupted run resumes.
+            _save_voice_cache(cache)
+            pending = next_page_ids
+            time.sleep(0.25)
+
+    # A previously interrupted cache may contain records that have pages but
+    # were never marked complete. Leave them uncached for the next run rather
+    # than silently pretending the data is final.
+    result = {}
+    for media_id in requested_ids:
+        record = cached_media.get(str(media_id)) or _empty_voice_record()
+        result[media_id] = _record_for_report(record)
     return result
 
 def voice_actor_stats(rows, language, overall, min_count, max_score):

@@ -31,12 +31,18 @@ def main():
     parser.add_argument("--min-count",type=int,default=3)
     parser.add_argument("--output")
     parser.add_argument("--no-open",action="store_true")
+    parser.add_argument("--refresh-va-cache",action="store_true",help="Delete cached voice cast data before running")
     args=parser.parse_args()
 
     username=(args.username or input("AniList username: ")).strip()
     if not username:
         print("A username is required.",file=sys.stderr); return 2
     statuses=VALID_STATUSES if args.all_rated else parse_statuses(args.statuses)
+    if args.refresh_va_cache:
+        cache_path=Path(__file__).resolve().parent/".anilist_cache"/"voice_actors.json"
+        if cache_path.exists():
+            cache_path.unlink()
+            print("Voice actor cache cleared.")
 
     print(f"Fetching public anime list for {username}...")
     try:

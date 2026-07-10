@@ -76,27 +76,3 @@ query ($ids: [Int], $page: Int) {
 """
 
 
-
-VOICE_ACTOR_QUERY = r"""
-query ($id: Int!, $characterPage: Int!) {
-  Media(id: $id, type: ANIME) {
-    id
-    characters(page: $characterPage, perPage: 50, sort: [ROLE, RELEVANCE, ID]) {
-      pageInfo { currentPage hasNextPage }
-      edges {
-        node { id name { full } }
-        japaneseVoiceActors: voiceActors(language: JAPANESE, sort: RELEVANCE) {
-          id
-          name { full }
-          siteUrl
-        }
-        englishVoiceActors: voiceActors(language: ENGLISH, sort: RELEVANCE) {
-          id
-          name { full }
-          siteUrl
-        }
-      }
-    }
-  }
-}
-"""
