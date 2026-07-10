@@ -149,58 +149,61 @@ def adjusted_top_rate(stat, overall_top_rate, prior_weight=8.0):
 
 
 def get_voice_actors(media_ids: list[int]) -> dict[int, dict[str, list[dict]]]:
-    """Fetch recurring Japanese and English performers.
+    """Fetch Japanese and English cast directly for each anime.
 
-    AniList paginates character credits independently for every anime. Fetch up
-    to three 50-character pages so long-running or ensemble shows do not lose
-    most of their cast. Each actor is deduplicated once per anime.
+    A per-anime query is slower than the previous batched query, but avoids
+    nested pagination behaving inconsistently across multiple media. Character
+    names are retained so recurring actors can be shown with concrete roles.
     """
-    result: dict[int, dict[str, list[dict]]] = defaultdict(lambda: {"japanese": [], "english": []})
-    batches = list(chunks(media_ids, 25))
-    for batch_number, batch in enumerate(batches, start=1):
-        print(f"Fetching voice actors batch {batch_number}/{len(batches)}...")
-        active_ids = set(batch)
-        seen_by_media = {
-            media_id: {"japanese": set(), "english": set()}
-            for media_id in batch
-        }
-        for character_page in range(1, 4):
-            if not active_ids:
-                break
+    result: dict[int, dict[str, list[dict]]] = defaultdict(
+        lambda: {"japanese": [], "english": []}
+    )
+    total = len(media_ids)
+    for index, media_id in enumerate(media_ids, start=1):
+        print(f"Fetching voice actors {index}/{total}...")
+        seen = {"japanese": {}, "english": {}}
+        character_page = 1
+        while character_page <= 6:  # Up to 300 character credits per anime.
             data = graphql(VOICE_ACTOR_QUERY, {
-                "ids": sorted(active_ids),
+                "id": media_id,
                 "characterPage": character_page,
             })
-            next_active = set()
-            for media in (data.get("Page") or {}).get("media") or []:
-                media_id = media.get("id")
-                if not media_id:
-                    continue
-                characters = media.get("characters") or {}
-                if (characters.get("pageInfo") or {}).get("hasNextPage"):
-                    next_active.add(media_id)
-                for edge in characters.get("edges") or []:
-                    for key, field in (("japanese", "japaneseVoiceActors"), ("english", "englishVoiceActors")):
-                        for actor in edge.get(field) or []:
-                            actor_id = actor.get("id")
-                            name = ((actor.get("name") or {}).get("full") or "").strip()
-                            identity = actor_id or name
-                            if not name or identity in seen_by_media[media_id][key]:
-                                continue
-                            seen_by_media[media_id][key].add(identity)
-                            result[media_id][key].append({
-                                "id": actor_id,
-                                "name": name,
-                                "url": actor.get("siteUrl") or "",
-                            })
-            active_ids = next_active
-            time.sleep(0.35)
+            media = data.get("Media") or {}
+            characters = media.get("characters") or {}
+            for edge in characters.get("edges") or []:
+                character = (((edge.get("node") or {}).get("name") or {}).get("full") or "").strip()
+                for language, field in (
+                    ("japanese", "japaneseVoiceActors"),
+                    ("english", "englishVoiceActors"),
+                ):
+                    for actor in edge.get(field) or []:
+                        actor_id = actor.get("id")
+                        name = ((actor.get("name") or {}).get("full") or "").strip()
+                        identity = actor_id or name
+                        if not name:
+                            continue
+                        item = seen[language].setdefault(identity, {
+                            "id": actor_id,
+                            "name": name,
+                            "url": actor.get("siteUrl") or "",
+                            "characters": [],
+                        })
+                        if character and character not in item["characters"]:
+                            item["characters"].append(character)
+            if not (characters.get("pageInfo") or {}).get("hasNextPage"):
+                break
+            character_page += 1
+            time.sleep(0.18)
+        for language in ("japanese", "english"):
+            result[media_id][language] = list(seen[language].values())
+        time.sleep(0.18)
     return result
-
 
 def voice_actor_stats(rows, language, overall, min_count, max_score):
     grouped = defaultdict(list)
     links = {}
+    appearances = defaultdict(list)
+    actor_names = {}
     for row in rows:
         rating = row.get("rating")
         if rating is None:
@@ -208,19 +211,32 @@ def voice_actor_stats(rows, language, overall, min_count, max_score):
         seen = set()
         for actor in (row.get("voice_actors") or {}).get(language, []):
             actor_id = actor.get("id") or actor.get("name")
-            if actor_id in seen:
+            if not actor_id or actor_id in seen:
                 continue
             seen.add(actor_id)
             name = actor.get("name")
-            if name:
-                grouped[name].append(float(rating))
-                links[name] = actor.get("url") or ""
+            if not name:
+                continue
+            actor_names[actor_id] = name
+            grouped[actor_id].append(float(rating))
+            links[actor_id] = actor.get("url") or ""
+            appearances[actor_id].append({
+                "anime": row.get("title") or "Unknown anime",
+                "anime_url": row.get("url") or "",
+                "characters": actor.get("characters") or [],
+                "rating": float(rating),
+            })
     result = []
-    for name, ratings in grouped.items():
+    for actor_id, ratings in grouped.items():
         if len(ratings) >= min_count:
             avg = statistics.fmean(ratings)
-            stat = GroupStat(name, len(ratings), avg, avg-overall,
+            stat = GroupStat(actor_names[actor_id], len(ratings), avg, avg-overall,
                              sum(r >= max_score for r in ratings)/len(ratings), ratings)
-            stat.url = links.get(name, "")
+            stat.url = links.get(actor_id, "")
+            stat.appearances = sorted(
+                appearances[actor_id],
+                key=lambda item: (-item["rating"], item["anime"].lower()),
+            )
             result.append(stat)
-    return sorted(result, key=lambda x: (x.average, x.count), reverse=True)
+    return sorted(result, key=lambda x: (x.top_rate, x.average, x.count), reverse=True)
+

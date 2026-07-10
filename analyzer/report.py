@@ -132,7 +132,7 @@ def recommendations_section(groups, score_format):
             extras.append(f"<details class='rec-details'><summary>{esc(name)} ({len(recs)})</summary>{rec_table(name,recs,score_format)}</details>")
     return "<section><h2>Recommendations</h2><p class='hint'>Everything already present anywhere on this AniList is excluded. Best matches are shown first; alternate recommendation views are expandable.</p>"+main+''.join(extras)+"</section>"
 
-def linked_stat_rows(stats, overall, score_format, limit=20):
+def linked_stat_rows(stats, overall, score_format, limit=20, show_roles=False):
     overall_top=sum(s.top_rate*s.count for s in stats)/sum(s.count for s in stats) if stats else 0
     ranked=sorted(stats,key=lambda s:(adjusted_top_rate(s,overall_top),s.count),reverse=True)[:limit]
     body=[]
@@ -140,11 +140,27 @@ def linked_stat_rows(stats, overall, score_format, limit=20):
         name=f"<a href='{esc(getattr(stat,'url',''))}'>{esc(stat.name)}</a>" if getattr(stat,'url','') else esc(stat.name)
         top_lift=stat.top_rate-overall_top
         cls="positive" if top_lift>.03 else "negative" if top_lift<-.03 else "neutral"
-        body.append(f"<tr><td>{name}</td><td>{stat.count}</td><td>{display_score(stat.average,score_format)}</td><td>{stat.top_rate:.0%}</td><td class='{cls}'>{top_lift:+.0%}</td></tr>")
-    return ''.join(body) or "<tr><td colspan='5' class='muted'>Not enough recurring credits.</td></tr>"
+        cells=(
+            f"<td>{name}</td><td>{stat.count}</td>"
+            f"<td>{display_score(stat.average,score_format)}</td>"
+            f"<td>{stat.top_rate:.0%}</td><td class='{cls}'>{top_lift:+.0%}</td>"
+        )
+        if show_roles:
+            examples=[]
+            for appearance in getattr(stat,"appearances",[])[:5]:
+                roles=", ".join(appearance.get("characters") or []) or "role not listed"
+                anime_name=esc(appearance.get("anime") or "Unknown anime")
+                anime_url=appearance.get("anime_url") or ""
+                anime_html=f"<a href='{esc(anime_url)}'>{anime_name}</a>" if anime_url else anime_name
+                examples.append(f"{esc(roles)} — {anime_html}")
+            cells += f"<td>{'<br>'.join(examples) if examples else '—'}</td>"
+        body.append(f"<tr>{cells}</tr>")
+    colspan=6 if show_roles else 5
+    return ''.join(body) or f"<tr><td colspan='{colspan}' class='muted'>Not enough recurring credits.</td></tr>"
 
-def people_table(title, stats, overall, score_format, note, collapsible=False):
-    section=f"""<section><h2>{esc(title)}</h2><p class='hint'>{esc(note)}</p><div class='table-wrap'><table><thead><tr><th>Name</th><th>Anime</th><th>Average</th><th>Top-rate</th><th>Top-rate lift</th></tr></thead><tbody>{linked_stat_rows(stats,overall,score_format)}</tbody></table></div></section>"""
+def people_table(title, stats, overall, score_format, note, collapsible=False, show_roles=False):
+    extra="<th>Roles in this list</th>" if show_roles else ""
+    section=f"""<section><h2>{esc(title)}</h2><p class='hint'>{esc(note)}</p><div class='table-wrap'><table><thead><tr><th>Name</th><th>Anime</th><th>Average</th><th>Top-rate</th><th>Top-rate lift</th>{extra}</tr></thead><tbody>{linked_stat_rows(stats,overall,score_format,show_roles=show_roles)}</tbody></table></div></section>"""
     return f"<details><summary>{esc(title)}</summary>{section}</details>" if collapsible else section
 
 def build_html(user, rows, all_entries, output, score_format, overall, stats, identity, recommendation_groups, include_staff):
@@ -180,9 +196,9 @@ def build_html(user, rows, all_entries, output, score_format, overall, stats, id
         people += people_table("Creative staff", stats["staff"], overall, score_format,
                                "Recurring directors, writers, composers, creators, and designers associated with higher-rated anime.")
         people += people_table("Japanese voice actors", stats["japanese_vas"], overall, score_format,
-                               "Japanese performers who recur across this rated list. Each actor counts at most once per anime.")
+                               "Japanese performers who recur across this rated list. Each actor counts at most once per anime.", show_roles=True)
         people += people_table("English voice actors", stats["english_vas"], overall, score_format,
-                               "English-dub performers who recur across this rated list. Coverage depends on AniList cast data.", True)
+                               "English-dub performers who recur across this rated list. Coverage depends on AniList cast data.", True, show_roles=True)
 
     secondary=group_table("Studios",stats["studios"],overall,score_format,20,False,True)
     secondary+=group_table("Source material",stats["sources"],overall,score_format,20,False,True)

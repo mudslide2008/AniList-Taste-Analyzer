@@ -1,4 +1,4 @@
-AniList Taste Analyzer 1.6
+AniList Taste Analyzer 1.7
 
 Windows
 1. Double-click run_anime_analyzer.bat
@@ -49,3 +49,10 @@ What changed in 1.6
 - Japanese and English VA tables now require only two recurring anime
 - Recommendation explanations cite actual favorite seed shows and meaningful overlap
 - Generic or unsupported recommendation claims were removed
+
+Voice actor overhaul in 1.7
+- Fetches cast per anime rather than through the unreliable multi-anime nested query.
+- Follows character pagination up to 300 credits per title.
+- Tracks the character names associated with each Japanese and English performer.
+- Displays concrete role evidence beside recurring actors.
+- Recurring performers still require appearances in at least two rated anime.
