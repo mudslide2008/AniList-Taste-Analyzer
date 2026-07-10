@@ -179,11 +179,15 @@ def people_table(title, stats, overall, score_format, note, collapsible=False, s
     section=f"""<section><h2>{esc(title)}</h2><p class='hint'>{esc(note)}</p><div class='table-wrap'><table><thead><tr><th>Name</th><th>Anime</th><th>Average</th><th>Top-rate</th><th>Top-rate lift</th>{extra}</tr></thead><tbody>{linked_stat_rows(stats,overall,score_format,show_roles=show_roles)}</tbody></table></div></section>"""
     return f"<details><summary>{esc(title)}</summary>{section}</details>" if collapsible else section
 
-def filter_va_stats_by_role(stats, role_name):
+def filter_va_stats_by_role(stats, role_name, overall, max_score):
+    """Create a role-specific VA view while preserving franchise deduplication."""
     filtered=[]
     target=role_name.upper()
+
     for stat in stats:
         appearances=[]
+        franchise_ratings={}
+
         for appearance in getattr(stat,"appearances",[]):
             matching=[
                 role for role in appearance.get("roles") or []
@@ -191,6 +195,7 @@ def filter_va_stats_by_role(stats, role_name):
             ]
             if not matching:
                 continue
+
             clone=dict(appearance)
             clone["roles"]=matching
             clone["main_count"]=len(matching) if target=="MAIN" else 0
@@ -198,16 +203,32 @@ def filter_va_stats_by_role(stats, role_name):
             clone["background_count"]=len(matching) if target=="BACKGROUND" else 0
             appearances.append(clone)
 
+            franchise_id=clone.get("franchise_id")
+            if franchise_id is None:
+                # Backward-safe fallback for malformed or legacy in-memory data.
+                franchise_id=clone.get("anime_url") or clone.get("anime")
+            franchise_ratings[franchise_id]=clone.get(
+                "franchise_rating",
+                clone.get("rating", stat.average),
+            )
+
         if not appearances:
             continue
 
+        role_ratings=list(franchise_ratings.values())
+        role_average=statistics.fmean(role_ratings)
+        role_top_rate=sum(
+            rating >= max_score
+            for rating in role_ratings
+        ) / len(role_ratings) if role_ratings else 0.0
+
         clone_stat=type(stat)(
             stat.name,
-            len(appearances),
-            stat.average,
-            stat.lift,
-            stat.top_rate,
-            stat.ratings,
+            len(franchise_ratings),
+            role_average,
+            role_average - overall,
+            role_top_rate,
+            role_ratings,
         )
         clone_stat.url=getattr(stat,"url","")
         clone_stat.appearances=appearances
@@ -222,9 +243,8 @@ def filter_va_stats_by_role(stats, role_name):
         reverse=True,
     )
 
-
 def va_role_table(title, stats, overall, score_format, role_name, collapsible=False):
-    role_stats=filter_va_stats_by_role(stats,role_name)
+    role_stats=filter_va_stats_by_role(stats,role_name,overall,score_format['max'])
     note_map={
         "MAIN":"Recurring performers linked through MAIN-character roles across distinct franchises. Separate seasons count once.",
         "SUPPORTING":"Recurring performers linked through SUPPORTING-character roles across distinct franchises. Separate seasons count once.",

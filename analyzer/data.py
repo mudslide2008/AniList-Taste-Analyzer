@@ -409,6 +409,7 @@ def voice_actor_stats(rows, language, overall, min_count, max_score):
             roles = actor.get("roles") or []
             role_counts = Counter((role.get("role") or "UNKNOWN").upper() for role in roles)
             franchise["appearances"].append({
+                "franchise_id": franchise_id,
                 "anime": row.get("title") or "Unknown anime",
                 "anime_url": row.get("url") or "",
                 "roles": roles,
@@ -423,16 +424,18 @@ def voice_actor_stats(rows, language, overall, min_count, max_score):
         if len(franchises) < min_count:
             continue
 
-        franchise_ratings = [
-            statistics.fmean(payload["ratings"])
-            for payload in franchises.values()
-        ]
+        franchise_ratings = []
+        appearances = []
+        for franchise_id, payload in franchises.items():
+            franchise_rating = statistics.fmean(payload["ratings"])
+            franchise_ratings.append(franchise_rating)
+            for appearance in payload["appearances"]:
+                appearance = dict(appearance)
+                appearance["franchise_id"] = franchise_id
+                appearance["franchise_rating"] = franchise_rating
+                appearances.append(appearance)
+
         avg = statistics.fmean(franchise_ratings)
-        appearances = [
-            appearance
-            for payload in franchises.values()
-            for appearance in payload["appearances"]
-        ]
 
         stat = GroupStat(
             actor_names[actor_id],
