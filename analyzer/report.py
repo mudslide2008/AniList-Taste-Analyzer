@@ -240,7 +240,7 @@ def _role_lines(franchises, role_name, show_all=False, initial_limit=5):
     )
 
 
-def _actor_card(stat, score_format):
+def _actor_card(stat, score_format, compact=False):
     franchises=_consolidate_actor_appearances(stat)
     main_count=sum(1 for item in franchises if item["MAIN"])
     supporting_count=sum(1 for item in franchises if item["SUPPORTING"])
@@ -266,13 +266,20 @@ def _actor_card(stat, score_format):
             f"<details class='va-role-section'><summary>Background roles ({background_count})</summary>{background_html}</details>"
         )
 
+    card_body=''.join(role_sections)
+    if compact:
+        card_body=(
+            f"<details class='va-card-details'><summary>Show roles</summary>"
+            f"{card_body}</details>"
+        )
+
     return (
         "<article class='va-card'>"
         f"<div class='va-card-head'><div><h3>{actor_name}</h3>"
-        f"<div class='hint'>{stat.count} distinct franchises</div></div>"
+        f"<div class='hint'>{stat.count} distinct franchises · {main_count} Main</div></div>"
         f"<div class='va-score'><strong>{display_score(stat.average,score_format)}</strong>"
         f"<span>{stat.top_rate:.0%} top-rated</span></div></div>"
-        f"{''.join(role_sections)}"
+        f"{card_body}"
         "</article>"
     )
 
@@ -292,14 +299,31 @@ def voice_actor_section(title, stats, score_format, collapsible=False):
     if not ranked:
         content="<section><h2>{}</h2><p class='muted'>Not enough recurring credits.</p></section>".format(esc(title))
     else:
-        cards=''.join(_actor_card(stat,score_format) for stat in ranked)
+        featured=[]
+        other=[]
+        for stat in ranked:
+            main_count=sum(1 for item in _consolidate_actor_appearances(stat) if item["MAIN"])
+            (featured if main_count>=2 else other).append(stat)
+
+        featured_html=''.join(_actor_card(stat,score_format) for stat in featured)
+        if not featured_html:
+            featured_html="<p class='muted'>No actors recur in two distinct Main-role franchises.</p>"
+
+        other_html=""
+        if other:
+            cards=''.join(_actor_card(stat,score_format,compact=True) for stat in other)
+            other_html=(
+                f"<details class='va-other'><summary>Other recurring VAs ({len(other)})</summary>"
+                "<p class='hint'>Actors with one or zero distinct Main-role franchises. Their full Supporting and Background credits remain available.</p>"
+                f"<div class='va-grid va-grid-compact'>{cards}</div></details>"
+            )
+
         content=(
             f"<section><h2>{esc(title)}</h2>"
-            "<p class='hint'>Each actor appears once. Connected seasons are consolidated into franchises; every Main-role franchise is shown, while Supporting and Background roles are expandable.</p>"
-            f"<div class='va-grid'>{cards}</div></section>"
+            "<p class='hint'>Actors recurring as leads across at least two distinct franchises are shown first. One-off leads and actors known only from Supporting or Background roles are grouped below.</p>"
+            f"<div class='va-grid'>{featured_html}</div>{other_html}</section>"
         )
     return f"<details><summary>{esc(title)}</summary>{content}</details>" if collapsible else content
-
 
 def voice_actor_tables(japanese_stats, english_stats, overall, score_format):
     return (
@@ -307,7 +331,7 @@ def voice_actor_tables(japanese_stats, english_stats, overall, score_format):
         + voice_actor_section("English voice actors",english_stats,score_format,collapsible=True)
     )
 
-def build_html(user, rows, all_entries, output, score_format, overall, stats, identity, recommendation_groups, include_staff):
+def build_html(user, rows, all_entries, output, score_format, overall, stats, identity, taste_glance, recommendation_groups, include_staff):
     ratings=[float(r["rating"]) for r in rows if r.get("rating") is not None]
     max_score=score_format["max"]
     top_count=sum(r>=max_score for r in ratings)
@@ -332,6 +356,16 @@ def build_html(user, rows, all_entries, output, score_format, overall, stats, id
     low_rows=sorted(rows,key=lambda r:(r.get("rating") or 99,r["title"]))
 
     profile_html="".join(f"<p>{esc(p)}</p>" for p in identity)
+    glance_signals="".join(
+        f"<div class='glance-signal'><span>{esc(label)}</span><strong>{esc(value)}</strong></div>"
+        for label,value in taste_glance.get("signals",[])
+    )
+    glance_html=(
+        "<section class='taste-glance'><div class='eyebrow'>Taste at a glance</div>"
+        f"<h2>{esc(taste_glance.get('headline',''))}</h2>"
+        f"<p>{esc(taste_glance.get('summary',''))}</p>"
+        f"<div class='glance-signals'>{glance_signals}</div></section>"
+    )
     confidence=confidence_label(len(ratings))
     primary=group_table("Genres",stats["genres"],overall,score_format,20,True,False,"Ranked by adjusted top-rating rate.")
     primary+=tag_sections(stats["all_tags"],overall,score_format)
@@ -371,11 +405,12 @@ section{{margin-top:28px;background:var(--panel);border:1px solid var(--line);bo
 .table-wrap{{overflow:auto}}table{{width:100%;border-collapse:collapse;min-width:680px}}th,td{{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left}}th{{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}}.positive{{color:var(--good)}}.negative{{color:var(--bad)}}.neutral{{color:var(--muted)}}
 .dist-row{{display:grid;grid-template-columns:90px 1fr 40px;gap:10px;align-items:center;margin:10px 0}}.bar{{height:12px;background:#263346;border-radius:999px;overflow:hidden}}.bar i{{display:block;height:100%;background:var(--accent);border-radius:inherit}}
 details{{margin-top:22px}}summary{{cursor:pointer;font-size:20px;font-weight:700;padding:14px 18px;background:var(--panel);border:1px solid var(--line);border-radius:12px}}details[open] summary{{border-radius:12px 12px 0 0}}details>section{{margin-top:0;border-radius:0 0 16px 16px}}.rec-details{{margin-top:12px}}.rec-details summary{{font-size:16px;background:var(--panel2);padding:10px 14px}}.rec-details .rec-block{{border-radius:0 0 12px 12px;margin-top:0}}
-.va-grid{{display:grid;gap:14px}}.va-card{{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:16px}}.va-card-head{{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}}.va-card h3{{margin:0;font-size:20px}}.va-score{{text-align:right;white-space:nowrap}}.va-score strong,.va-score span{{display:block}}.va-score span,.season-count{{color:var(--muted);font-size:12px}}.va-role-section{{margin-top:14px}}.va-role-section h4{{margin:0 0 7px;font-size:15px}}.va-role-section h4 span{{color:var(--muted);font-weight:400}}.va-role-section>summary{{font-size:14px;padding:8px 10px;background:rgba(0,0,0,.14)}}.va-role-list{{margin:7px 0 0;padding-left:20px}}.va-role-list li{{margin:5px 0}}.va-characters{{font-weight:600}}.va-anime{{color:var(--muted)}}.va-more{{margin:8px 0 0 20px}}.va-more>summary{{display:inline-block;font-size:12px;padding:5px 9px;background:rgba(0,0,0,.16)}}footer{{margin-top:36px;color:var(--muted);font-size:13px}}@media(max-width:650px){{main{{padding:16px 10px 50px}}section,.hero{{padding:15px}}}}
+.va-grid{{display:grid;gap:14px}}.va-card{{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:16px}}.va-card-head{{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}}.va-card h3{{margin:0;font-size:20px}}.va-score{{text-align:right;white-space:nowrap}}.va-score strong,.va-score span{{display:block}}.va-score span,.season-count{{color:var(--muted);font-size:12px}}.va-role-section{{margin-top:14px}}.va-role-section h4{{margin:0 0 7px;font-size:15px}}.va-role-section h4 span{{color:var(--muted);font-weight:400}}.va-role-section>summary{{font-size:14px;padding:8px 10px;background:rgba(0,0,0,.14)}}.va-role-list{{margin:7px 0 0;padding-left:20px}}.va-role-list li{{margin:5px 0}}.va-characters{{font-weight:600}}.va-anime{{color:var(--muted)}}.va-more{{margin:8px 0 0 20px}}.va-more>summary{{display:inline-block;font-size:12px;padding:5px 9px;background:rgba(0,0,0,.16)}}.va-other{{margin-top:18px}}.va-other>summary{{font-size:17px;background:var(--panel2)}}.va-grid-compact{{margin-top:12px}}.va-card-details{{margin-top:10px}}.va-card-details>summary{{font-size:13px;padding:7px 10px;background:rgba(0,0,0,.14)}}.taste-glance{{background:linear-gradient(135deg,var(--panel2),var(--panel));border-color:rgba(98,214,232,.35)}}.taste-glance .eyebrow{{color:var(--accent);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em}}.taste-glance h2{{font-size:clamp(22px,4vw,34px);max-width:900px;margin-top:7px}}.taste-glance>p{{max-width:850px;font-size:16px}}.glance-signals{{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}}.glance-signal{{background:rgba(0,0,0,.18);border:1px solid var(--line);border-radius:10px;padding:9px 12px}}.glance-signal span,.glance-signal strong{{display:block}}.glance-signal span{{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}}footer{{margin-top:36px;color:var(--muted);font-size:13px}}@media(max-width:650px){{main{{padding:16px 10px 50px}}section,.hero{{padding:15px}}}}
 </style></head><body><main>
 <div class='hero'><div class='muted'>Unofficial AniList taste analysis</div><h1>{esc(user['name'])}</h1><div><a href='{esc(user.get('siteUrl',''))}'>Open AniList profile</a> · Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</div>
 <div class='cards'><div class='card'><span>Rated anime</span><strong>{len(ratings)}</strong></div><div class='card'><span>Scoring system</span><strong>{esc(score_format['label'])}</strong></div><div class='card'><span>Average</span><strong>{display_score(overall,score_format)}</strong></div><div class='card'><span>Top ratings</span><strong>{top_count}</strong></div><div class='card'><span>Top-rating rate</span><strong>{top_count/len(ratings):.0%}</strong></div></div></div>
-<section><h2>Taste profile</h2><div class='confidence'>Confidence: {confidence} · based on {len(ratings)} rated anime</div>{profile_html}</section>
+{glance_html}
+<details class='taste-details'><summary>Detailed taste profile</summary><section><h2>Detailed taste profile</h2><div class='confidence'>Confidence: {confidence} · based on {len(ratings)} rated anime</div>{profile_html}</section></details>
 {recommendations_section(recommendation_groups,score_format)}
 <section><h2>Rating distribution</h2>{''.join(dist)}</section>
 <div class='grid'>{show_table('Most above community consensus',positive,score_format,15)}{show_table('Most below community consensus',negative,score_format,15)}</div>

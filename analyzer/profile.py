@@ -70,3 +70,106 @@ def build_identity_profile(rows, genres, tags, overall, max_score):
         )
 
     return paragraphs[:4]
+
+
+TASTE_ARCHETYPES = {
+    "curiosity and mastery": {
+        "Educational", "Work", "Drawing", "Writing", "Music", "Acting",
+        "Photography", "Cooking", "Agriculture", "Medicine", "Economics",
+        "Engineering", "Entrepreneurship", "Food", "Art", "School Club",
+    },
+    "exploration and discovery": {
+        "Travel", "Adventure", "Survival", "Dungeon", "Space", "Environmental",
+        "Mythology", "Historical", "Archaeology", "Outdoor", "Wilderness",
+    },
+    "personal growth and connection": {
+        "Coming of Age", "Rehabilitation", "Found Family", "Family Life",
+        "Bullying", "Mentorship", "Friendship", "Adoption", "Orphan",
+    },
+    "high-stakes intensity": {
+        "Revenge", "Crime", "Death Game", "Gore", "Tragedy", "War",
+        "Survival", "Assassins", "Terrorism", "Psychological",
+    },
+    "worldbuilding and systems": {
+        "Politics", "Economics", "Kingdom Management", "Isekai", "Magic",
+        "Military", "Strategy", "Urban Fantasy", "Mythology", "Dungeon",
+    },
+}
+
+LOW_INFORMATION_PROFILE_TAGS = {
+    "Snowscape", "Desert", "Coastal", "Urban", "Rural", "Foreign", "CGI",
+    "Primarily Male Cast", "Primarily Female Cast", "Primarily Teen Cast",
+    "Primarily Adult Cast", "Male Protagonist", "Female Protagonist",
+    "Heterosexual", "Nudity", "Male Nudity", "Female Nudity",
+}
+
+
+def build_taste_at_glance(rows, genres, tags, overall, max_score):
+    """Create a compact, shareable overview without pretending to read minds."""
+    ratings=[float(row["rating"]) for row in rows if row.get("rating") is not None]
+    overall_top=sum(value>=max_score for value in ratings)/len(ratings)
+
+    useful_tags=[
+        tag for tag in tags
+        if tag.count>=5 and tag.name not in LOW_INFORMATION_PROFILE_TAGS
+    ]
+
+    archetype_scores=[]
+    for label, names in TASTE_ARCHETYPES.items():
+        matches=[tag for tag in useful_tags if tag.name in names]
+        if not matches:
+            continue
+        score=sum(
+            max(0.0, tag.top_rate-overall_top) * (tag.count/(tag.count+8.0))
+            + max(0.0, tag.lift/max_score) * .35
+            for tag in matches
+        )
+        if score>0:
+            archetype_scores.append((score,label,matches))
+    archetype_scores.sort(reverse=True,key=lambda item:item[0])
+
+    if archetype_scores:
+        primary=archetype_scores[0]
+        secondary=archetype_scores[1] if len(archetype_scores)>1 else None
+        if secondary and secondary[0]>=primary[0]*.55:
+            headline=f"A taste built around {primary[1]}—with a strong pull toward {secondary[1]}."
+        else:
+            headline=f"A taste built around {primary[1]}."
+        matched=sorted(primary[2],key=lambda tag:(tag.top_rate-overall_top,tag.count),reverse=True)
+        examples=", ".join(tag.name for tag in matched[:3])
+        summary=(
+            f"The strongest recurring signals are {examples}. Broad genre labels matter, "
+            "but specific themes and the way a story uses them are more predictive of a top rating."
+        )
+    else:
+        eligible=[genre for genre in genres if genre.count>=8]
+        eligible.sort(key=lambda genre:(genre.top_rate-overall_top,genre.count),reverse=True)
+        if eligible and eligible[0].top_rate-overall_top>=.07:
+            headline=f"Broad taste, with {eligible[0].name} as the most reliable anchor."
+        else:
+            headline="Broad taste driven more by execution than by genre."
+        summary=(
+            "No single theme dominates strongly enough to define the list. Ratings appear to depend "
+            "more on individual execution, momentum, and character investment than on category alone."
+        )
+
+    divergences=[
+        row["rating"]-row["community_display"]
+        for row in rows if row.get("community_display") is not None
+    ]
+    notable=sum(abs(value)>max_score*.12 for value in divergences)
+    alignment=(
+        "Highly personal" if notable>=len(divergences)*.28
+        else "Somewhat independent" if notable>=len(divergences)*.15
+        else "Usually aligned"
+    )
+
+    return {
+        "headline": headline,
+        "summary": summary,
+        "signals": [
+            ("Top-rating rate", f"{overall_top:.0%}"),
+            ("Community alignment", alignment),
+            ("Evidence base", f"{len(ratings)} rated anime"),
+        ],
+    }

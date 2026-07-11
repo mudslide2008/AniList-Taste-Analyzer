@@ -1,12 +1,12 @@
-AniList Taste Analyzer 2.0
+AniList Taste Analyzer 2.1
 
-Voice actor report redesign
-- Voice actors are displayed as individual cards instead of six separate tables.
-- Each actor appears once per language.
-- Season-level appearances are consolidated by franchise.
-- Duplicate character credits within a franchise are merged.
-- Every Main-role franchise is displayed with no cutoff.
-- Supporting and Background groups are collapsed per actor.
-- Supporting and Background groups show five franchises initially and expose the remainder through Show more.
-- Japanese voice actors remain visible by default; the English section is expandable.
-- Existing VA cache data remains compatible; no rebuild is required.
+Changes
+- Adds a prominent Taste at a glance section with a short big-picture interpretation.
+- Keeps the longer statistical Taste Profile available in an expandable section.
+- Japanese VAs with at least two distinct Main-role franchises remain visible.
+- VAs with one or zero Main-role franchises move into Other recurring VAs, collapsed by default.
+- English VA analysis remains expandable and uses the same lead-first grouping.
+- Actor cards still consolidate seasons into franchises and retain every Main-role franchise.
+- Supporting and Background roles remain available without dominating report length.
+
+No VA cache rebuild is required.

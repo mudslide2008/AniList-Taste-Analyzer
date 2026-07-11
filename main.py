@@ -6,7 +6,7 @@ from analyzer.api import graphql, AnalyzerError
 from analyzer.queries import LIST_QUERY
 from analyzer.util import safe_name, score_info
 from analyzer.data import flatten_entries, normalize_entries, group_stats, staff_stats, voice_actor_stats
-from analyzer.profile import build_identity_profile
+from analyzer.profile import build_identity_profile, build_taste_at_glance
 from analyzer.recommendations import fetch_recommendations, categorize_recommendations
 from analyzer.report import build_html
 from analyzer.exports import write_csv, write_json
@@ -72,6 +72,7 @@ def main():
         }
         high_tag_stats=[s for s in stats["all_tags"] if s.count>=8]
         identity=build_identity_profile(rated,stats["genres"],high_tag_stats,overall,max_score)
+        taste_glance=build_taste_at_glance(rated,stats["genres"],stats["all_tags"],overall,max_score)
         recs=fetch_recommendations(rated,all_entries,max_score,high_tag_stats,stats["genres"])
         rec_groups=categorize_recommendations(recs)
 
@@ -80,7 +81,7 @@ def main():
         html_path=out/"anime_taste_report.html"
         write_csv(rows,out/"anime_data.csv")
         write_json(user,rows,out/"anime_data.json")
-        build_html(user,rated,all_entries,html_path,info,overall,stats,identity,rec_groups,not args.no_staff)
+        build_html(user,rated,all_entries,html_path,info,overall,stats,identity,taste_glance,rec_groups,not args.no_staff)
 
         print(f"\nHTML report: {html_path}")
         if not args.no_open: webbrowser.open(html_path.as_uri())
