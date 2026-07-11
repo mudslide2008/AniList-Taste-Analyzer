@@ -1,13 +1,14 @@
-AniList Taste Analyzer 3.3.1
+AniList Taste Analyzer 3.4
 
-Artwork selection correction
-- Removed the deterministic three-scene pool.
-- Removed the nearly identical bundled mountain crops.
-- Each analyzer run now randomly selects from up to 12 highly rated,
-  thematically relevant AniList banners/covers.
-- The same selected hero is reused across the cover and social card in one run.
-- A second distinct image is used for the quote strip when available.
-- Running the analyzer again rerolls the artwork.
-- Custom cover/quote backgrounds still override random selection.
+Single-file artwork asset pack
+- The only required artwork file is assets/artwork_asset_pack.png.
+- The analyzer automatically extracts 15 clean images:
+  Exploration, Sci-Fi, Fantasy, Mystery, and Romance;
+  each with poster, social, and quote variants.
+- The artwork row is selected from the report's strongest signals,
+  headline, and summary.
+- Extracted images are cached in .anilist_cache/artwork_pack.
+- Replacing the contact sheet automatically rebuilds its crops.
+- Random AniList banner backgrounds and old scene files are no longer used.
 
-No cache rebuild is required.
+The ZIP already contains the asset pack. No manual image splitting is required.

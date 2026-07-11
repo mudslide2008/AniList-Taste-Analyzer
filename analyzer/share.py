@@ -10,6 +10,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Iterable
 
+from .artwork_pack import selected_artwork
 from .share_pillow import write_share_assets as write_share_assets_pillow
 
 
@@ -103,102 +104,26 @@ def _embedded_image_uri(value: str, project_root: Path) -> str:
     return _remote_data_uri(value, project_root)
 
 
-def _scene_index(username: str, themes: list[str], scene_count: int = 3) -> int:
-    """Choose a stable scene per user/report rather than per run."""
-    identity = f"{username.casefold()}|{'|'.join(theme.casefold() for theme in themes)}"
-    digest = hashlib.sha256(identity.encode("utf-8")).digest()
-    return int.from_bytes(digest[:4], "big") % scene_count + 1
 
-
-def _custom_art_uri(project_root: Path, names: tuple[str, ...]) -> str:
-    for name in names:
-        uri = _file_data_uri(project_root / "assets" / name)
-        if uri:
-            return uri
-    return ""
-
-
-def _scene_art_uri(
+def _artwork_for_report(
     project_root: Path,
-    username: str,
-    themes: list[str],
-    kind: str,
-) -> str:
-    """Return artwork tailored to poster, social, or quote proportions."""
-    if kind == "poster":
-        custom = _custom_art_uri(
-            project_root,
-            ("cover_background.jpg", "cover_background.png", "cover_background.webp"),
-        )
-    elif kind == "social":
-        custom = _custom_art_uri(
-            project_root,
-            (
-                "social_background.jpg",
-                "social_background.png",
-                "cover_background.jpg",
-                "cover_background.png",
-            ),
-        )
-    else:
-        custom = _custom_art_uri(
-            project_root,
-            ("quote_background.jpg", "quote_background.png"),
-        )
+    user: dict,
+    taste_glance: dict,
+) -> tuple[str, dict[str, str]]:
+    username = str(user.get("name") or "AniList user")
+    themes = [str(value) for value in (taste_glance.get("themes") or []) if value][:4]
 
-    if custom:
-        return custom
-
-    index = _scene_index(username, themes)
-    scene_path = project_root / "assets" / f"scene_{index}_{kind}.jpg"
-    return _file_data_uri(scene_path)
-
-
-
-
-
-def _row_theme_overlap(row: dict, themes: list[str]) -> int:
-    terms = {
-        str(value).casefold()
-        for value in (row.get("tags") or []) + (row.get("genres") or [])
-    }
-    return sum(1 for theme in themes if theme.casefold() in terms)
-
-
-def _hero_url(
-    rows: list[dict],
-    themes: list[str],
-    rec_groups: dict | None,
-    project_root: Path,
-    username: str,
-    kind: str,
-) -> str:
-    scene = _scene_art_uri(project_root, username, themes, kind)
-    if scene:
-        return scene
-
-    candidates = [row for row in rows if row.get("banner_image") or row.get("cover_image")]
-    candidates.sort(
-        key=lambda row: (
-            _row_theme_overlap(row, themes),
-            row.get("rating") or 0,
-            bool(row.get("banner_image")),
-            row.get("favourites") or 0,
-        ),
-        reverse=True,
+    category, paths = selected_artwork(
+        project_root,
+        username,
+        themes,
+        str(taste_glance.get("headline") or ""),
+        str(taste_glance.get("summary") or ""),
     )
-    relevant = [row for row in candidates if _row_theme_overlap(row, themes) > 0]
-    for row in relevant or candidates:
-        url = row.get("banner_image") or row.get("cover_image")
-        if url:
-            return str(url)
-
-    best = _best_recommendation(rec_groups)
-    if best:
-        return str(best.get("banner_image") or best.get("cover_image") or "")
-    return ""
-
-
+    return category, {
+        kind: _file_data_uri(path)
+        for kind, path in paths.items()
+    }
 
 
 def _theme_description(name: str) -> str:
@@ -391,22 +316,13 @@ body { padding:20px; }
 def _poster_html(user, taste_glance, stats, rows, score_format, overall, rec_groups):
     project_root = Path(__file__).resolve().parent.parent
     themes = [str(value) for value in (taste_glance.get("themes") or []) if value][:4]
-    username = str(user.get("name") or "AniList user")
-    hero = _embedded_image_uri(
-        _hero_url(
-            rows,
-            themes,
-            rec_groups,
-            project_root,
-            username,
-            "poster",
-        ),
+    art_category, artwork = _artwork_for_report(
         project_root,
+        user,
+        taste_glance,
     )
-    quote_art = _embedded_image_uri(
-        _scene_art_uri(project_root, username, themes, "quote"),
-        project_root,
-    )
+    hero = artwork.get("poster", "")
+    quote_art = artwork.get("quote", "")
     hero_style = f"--hero-image:url('{_esc(hero)}');" if hero else ""
     quote_style = f"--quote-image:url('{_esc(quote_art)}');" if quote_art else ""
 
@@ -448,18 +364,12 @@ def _poster_html(user, taste_glance, stats, rows, score_format, overall, rec_gro
 def _social_html(user, taste_glance, rows, score_format, overall, rec_groups):
     project_root = Path(__file__).resolve().parent.parent
     themes = [str(value) for value in (taste_glance.get("themes") or []) if value][:4]
-    username = str(user.get("name") or "AniList user")
-    hero = _embedded_image_uri(
-        _hero_url(
-            rows,
-            themes,
-            rec_groups,
-            project_root,
-            username,
-            "social",
-        ),
+    art_category, artwork = _artwork_for_report(
         project_root,
+        user,
+        taste_glance,
     )
+    hero = artwork.get("social", "")
     hero_style = f"--hero-image:url('{_esc(hero)}');" if hero else ""
     theme_chips = "".join(f'<span>{_esc(theme)}</span>' for theme in themes)
     best = _best_recommendation(rec_groups)

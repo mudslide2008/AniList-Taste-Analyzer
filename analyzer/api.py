@@ -4,7 +4,7 @@ import json, time, urllib.error, urllib.request
 from typing import Any
 
 API_URL = "https://graphql.anilist.co"
-USER_AGENT = "Unofficial-AniList-Taste-Analyzer/3.3.1"
+USER_AGENT = "Unofficial-AniList-Taste-Analyzer/3.4"
 
 class AnalyzerError(RuntimeError):
     pass

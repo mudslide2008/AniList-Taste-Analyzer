@@ -1,11 +1,4 @@
-Artwork selection
+Keep artwork_asset_pack.png in this folder.
 
-By default, each analyzer run chooses artwork from the user's own highly rated
-anime banners/covers. The chosen hero is reused across the poster and social card,
-while a second distinct image is used for the quote strip when available.
-
-The artwork rerolls on each new analyzer run.
-
-Optional overrides:
-- cover_background.jpg or .png
-- quote_background.jpg or .png
+The analyzer automatically crops every theme and output format from that one
+contact-sheet image. Do not manually split it.
