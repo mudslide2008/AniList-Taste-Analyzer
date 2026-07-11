@@ -28,6 +28,8 @@ query ($userName: String!) {
           title { userPreferred romaji english native }
           format status episodes duration season seasonYear source genres
           meanScore averageScore popularity favourites siteUrl
+          bannerImage
+          coverImage { extraLarge large color }
           tags { name category rank isMediaSpoiler isGeneralSpoiler }
           studios(isMain: true) { nodes { id name siteUrl } }
           relations {
@@ -56,6 +58,8 @@ query ($ids: [Int]) {
             id
             title { userPreferred romaji english }
             format seasonYear genres meanScore averageScore popularity siteUrl
+            bannerImage
+            coverImage { extraLarge large color }
             tags { name category rank isMediaSpoiler isGeneralSpoiler }
           }
         }
@@ -73,7 +77,7 @@ query ($ids: [Int], $page: Int) {
       staff(perPage: 25, sort: RELEVANCE) {
         edges {
           role
-          node { id name { full } siteUrl }
+          node { id name { full } siteUrl image { large medium } }
         }
       }
     }

@@ -86,6 +86,10 @@ def normalize_entries(entries, statuses, include_unrated, include_spoiler_tags, 
             "community_normalized": float(community) if community else None,
             "community_display": (float(community) / 100.0 * score_format["max"]) if community else None,
             "popularity": media.get("popularity") or 0, "favourites": media.get("favourites") or 0,
+            "banner_image": media.get("bannerImage") or "",
+            "cover_image": ((media.get("coverImage") or {}).get("extraLarge")
+                            or (media.get("coverImage") or {}).get("large") or ""),
+            "cover_color": (media.get("coverImage") or {}).get("color") or "",
             "url": media.get("siteUrl") or f"https://anilist.co/anime/{media['id']}", "staff": [],
         })
     if fetch_staff_data and selected:
@@ -100,7 +104,13 @@ def normalize_entries(entries, statuses, include_unrated, include_spoiler_tags, 
                     "director", "series composition", "script", "screenplay",
                     "original creator", "music", "character design"
                 )):
-                    credits.append({"name": name, "role": role, "url": node.get("siteUrl") or ""})
+                    credits.append({
+                        "name": name,
+                        "role": role,
+                        "url": node.get("siteUrl") or "",
+                        "image": ((node.get("image") or {}).get("large")
+                                  or (node.get("image") or {}).get("medium") or ""),
+                    })
             row["staff"] = credits
 
     if fetch_staff_data and selected:
