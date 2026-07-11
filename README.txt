@@ -1,14 +1,14 @@
-AniList Taste Analyzer 3.4
+AniList Taste Analyzer 3.4.1
 
-Single-file artwork asset pack
-- The only required artwork file is assets/artwork_asset_pack.png.
-- The analyzer automatically extracts 15 clean images:
-  Exploration, Sci-Fi, Fantasy, Mystery, and Romance;
-  each with poster, social, and quote variants.
-- The artwork row is selected from the report's strongest signals,
-  headline, and summary.
-- Extracted images are cached in .anilist_cache/artwork_pack.
-- Replacing the contact sheet automatically rebuilds its crops.
-- Random AniList banner backgrounds and old scene files are no longer used.
+Artwork-pack packaging fix
+- Includes assets/artwork_asset_pack.png in the ZIP.
+- Updated for the new 1182x1330, 15-theme sheet.
+- Supports Exploration, Sci-Fi, Fantasy, Mystery, Romance, Slice of Life,
+  Action, Horror, Historical, Adventure, Comedy, Sports, Music,
+  Supernatural, and Mecha.
+- Uses ImageOps.fit rather than stretching crops.
+- Missing or invalid artwork can no longer crash the analyzer.
+- Extracted art is cached under .anilist_cache/artwork_pack.
 
-The ZIP already contains the asset pack. No manual image splitting is required.
+Delete your existing assets folder before copying this version so stale files
+cannot interfere.

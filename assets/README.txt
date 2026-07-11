@@ -1,4 +1,6 @@
-Keep artwork_asset_pack.png in this folder.
+This folder must contain:
 
-The analyzer automatically crops every theme and output format from that one
-contact-sheet image. Do not manually split it.
+artwork_asset_pack.png
+
+Version 3.4.1 expects the included 1182x1330, 15-theme sheet.
+Do not rename it.

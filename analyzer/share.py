@@ -113,16 +113,22 @@ def _artwork_for_report(
     username = str(user.get("name") or "AniList user")
     themes = [str(value) for value in (taste_glance.get("themes") or []) if value][:4]
 
-    category, paths = selected_artwork(
-        project_root,
-        username,
-        themes,
-        str(taste_glance.get("headline") or ""),
-        str(taste_glance.get("summary") or ""),
-    )
+    try:
+        category, paths = selected_artwork(
+            project_root,
+            username,
+            themes,
+            str(taste_glance.get("headline") or ""),
+            str(taste_glance.get("summary") or ""),
+        )
+    except Exception as exc:
+        print(f"Artwork pack could not be loaded; using background fallback: {exc}")
+        return "fallback", {}
+
     return category, {
         kind: _file_data_uri(path)
         for kind, path in paths.items()
+        if path.exists()
     }
 
 

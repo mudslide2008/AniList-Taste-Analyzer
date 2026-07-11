@@ -4,68 +4,109 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageOps
 
 
 PACK_FILENAME = "artwork_asset_pack.png"
+EXPECTED_SIZE = (1182, 1330)
 
-CROPS = {
-    "exploration": {
-        "poster": (265, 123, 704, 305),
-        "social": (712, 123, 1048, 305),
-        "quote": (1063, 168, 1511, 280),
-    },
-    "sci_fi": {
-        "poster": (265, 319, 704, 492),
-        "social": (712, 319, 1048, 492),
-        "quote": (1063, 363, 1511, 468),
-    },
-    "fantasy": {
-        "poster": (265, 507, 704, 671),
-        "social": (712, 507, 1048, 671),
-        "quote": (1063, 552, 1511, 657),
-    },
-    "mystery": {
-        "poster": (265, 685, 704, 833),
-        "social": (712, 685, 1048, 833),
-        "quote": (1063, 721, 1511, 821),
-    },
-    "romance": {
-        "poster": (265, 845, 704, 1001),
-        "social": (712, 845, 1048, 1001),
-        "quote": (1063, 887, 1511, 998),
-    },
+# Image-only cells in the new 15-theme asset sheet.
+# Labels, icons, borders, and headers are excluded.
+COLUMNS = {
+    "poster": (191, 505),
+    "social": (510, 783),
+    "quote": (788, 1141),
 }
 
+ROWS = {
+    "exploration": (108, 209),
+    "sci_fi": (215, 314),
+    "fantasy": (320, 414),
+    "mystery": (420, 514),
+    "romance": (520, 604),
+    "slice_of_life": (609, 691),
+    "action": (696, 768),
+    "horror": (774, 845),
+    "historical": (851, 922),
+    "adventure": (928, 998),
+    "comedy": (1004, 1072),
+    "sports": (1077, 1134),
+    "music": (1139, 1196),
+    "supernatural": (1202, 1259),
+    "mecha": (1264, 1328),
+}
+
+CROPS = {
+    theme: {
+        kind: (x1, y1, x2, y2)
+        for kind, (x1, x2) in COLUMNS.items()
+    }
+    for theme, (y1, y2) in ROWS.items()
+}
+
+# Match the actual renderer slots.
 OUTPUT_SIZES = {
     "poster": (1040, 760),
     "social": (1080, 1080),
     "quote": (760, 240),
 }
 
+# Fine-tuned focal points for ImageOps.fit.
+CENTERING = {
+    "poster": (0.62, 0.50),
+    "social": (0.58, 0.50),
+    "quote": (0.58, 0.50),
+}
+
 THEME_KEYWORDS = {
     "exploration": {
-        "adventure", "agriculture", "dungeon", "exploration", "historical",
-        "journey", "nature", "outdoor", "survival", "travel", "wilderness",
-        "worldbuilding",
+        "exploration", "journey", "travel", "wilderness", "nature",
+        "outdoor", "discovery",
     },
     "sci_fi": {
-        "artificial intelligence", "cyberpunk", "future", "futuristic",
-        "mecha", "robot", "robots", "science fiction", "sci-fi", "space",
-        "technology",
+        "science fiction", "sci-fi", "space", "cyberpunk", "technology",
+        "future", "robot",
     },
     "fantasy": {
-        "action", "demons", "dragon", "dragons", "fantasy", "gore",
-        "isekai", "magic", "medieval", "mythology", "revenge",
-        "supernatural", "war",
+        "fantasy", "magic", "dragon", "isekai", "medieval", "mythology",
     },
     "mystery": {
-        "conspiracy", "crime", "detective", "horror", "mystery",
-        "psychological", "secrets", "suspense", "thriller",
+        "mystery", "crime", "detective", "conspiracy", "suspense",
+        "psychological", "thriller",
     },
     "romance": {
-        "coming of age", "drama", "family", "found family", "love",
-        "relationships", "romance", "school", "slice of life",
+        "romance", "love", "relationships", "school romance",
+    },
+    "slice_of_life": {
+        "slice of life", "everyday life", "iyashikei", "family",
+        "found family", "work",
+    },
+    "action": {
+        "action", "battle", "gore", "revenge", "war", "survival",
+    },
+    "horror": {
+        "horror", "fear", "occult", "dark", "body horror",
+    },
+    "historical": {
+        "historical", "history", "period", "samurai",
+    },
+    "adventure": {
+        "adventure", "dungeon", "quest", "worldbuilding", "agriculture",
+    },
+    "comedy": {
+        "comedy", "parody", "gag humor", "humor",
+    },
+    "sports": {
+        "sports", "competition", "team sports", "athletics",
+    },
+    "music": {
+        "music", "band", "idol", "performance", "musical",
+    },
+    "supernatural": {
+        "supernatural", "demons", "spirits", "curses", "youkai",
+    },
+    "mecha": {
+        "mecha", "robots", "giant robot", "pilots",
     },
 }
 
@@ -79,18 +120,21 @@ def choose_art_theme(
     phrases = [str(value).casefold() for value in themes if value]
     text = " ".join(phrases + [headline.casefold(), summary.casefold()])
 
-    scores = {}
+    scores: dict[str, int] = {}
     for category, keywords in THEME_KEYWORDS.items():
         score = 0
         for keyword in keywords:
             if keyword in phrases:
-                score += 3
+                score += 4
             elif keyword in text:
                 score += 1
         scores[category] = score
 
     best_score = max(scores.values(), default=0)
-    tied = sorted(category for category, score in scores.items() if score == best_score)
+    tied = sorted(
+        category for category, score in scores.items()
+        if score == best_score
+    )
 
     if best_score > 0 and len(tied) == 1:
         return tied[0]
@@ -104,9 +148,7 @@ def choose_art_theme(
 def extract_artwork_pack(project_root: Path) -> dict[str, dict[str, Path]]:
     source = project_root / "assets" / PACK_FILENAME
     if not source.exists():
-        raise FileNotFoundError(
-            f"Missing {source}. Keep artwork_asset_pack.png in the assets folder."
-        )
+        return {}
 
     digest = hashlib.sha256(source.read_bytes()).hexdigest()[:16]
     cache_root = project_root / ".anilist_cache" / "artwork_pack" / digest
@@ -114,10 +156,9 @@ def extract_artwork_pack(project_root: Path) -> dict[str, dict[str, Path]]:
 
     with Image.open(source) as pack:
         pack = pack.convert("RGB")
-        if pack.size != (1536, 1024):
-            raise ValueError(
-                f"{PACK_FILENAME} must be 1536x1024, not {pack.size[0]}x{pack.size[1]}."
-            )
+        if pack.size != EXPECTED_SIZE:
+            # Artwork should never crash the main analyzer.
+            return {}
 
         for category, variants in CROPS.items():
             manifest[category] = {}
@@ -132,7 +173,13 @@ def extract_artwork_pack(project_root: Path) -> dict[str, dict[str, Path]]:
                 crop = pack.crop(box)
                 crop = ImageEnhance.Color(crop).enhance(1.04)
                 crop = ImageEnhance.Contrast(crop).enhance(1.04)
-                crop = crop.resize(OUTPUT_SIZES[kind], Image.Resampling.LANCZOS)
+
+                crop = ImageOps.fit(
+                    crop,
+                    OUTPUT_SIZES[kind],
+                    method=Image.Resampling.LANCZOS,
+                    centering=CENTERING[kind],
+                )
                 crop.save(output, quality=95, optimize=True)
 
     return manifest
@@ -147,4 +194,4 @@ def selected_artwork(
 ) -> tuple[str, dict[str, Path]]:
     category = choose_art_theme(username, themes, headline, summary)
     manifest = extract_artwork_pack(project_root)
-    return category, manifest[category]
+    return category, manifest.get(category, {})
