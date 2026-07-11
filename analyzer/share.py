@@ -103,25 +103,57 @@ def _embedded_image_uri(value: str, project_root: Path) -> str:
     return _remote_data_uri(value, project_root)
 
 
-def _hero_asset_uri(project_root: Path) -> str:
-    for name in (
-        "cover_background.jpg",
-        "cover_background.png",
-        "cover_background.webp",
-        "default_hero.jpg",
-    ):
+def _scene_index(username: str, themes: list[str], scene_count: int = 3) -> int:
+    """Choose a stable scene per user/report rather than per run."""
+    identity = f"{username.casefold()}|{'|'.join(theme.casefold() for theme in themes)}"
+    digest = hashlib.sha256(identity.encode("utf-8")).digest()
+    return int.from_bytes(digest[:4], "big") % scene_count + 1
+
+
+def _custom_art_uri(project_root: Path, names: tuple[str, ...]) -> str:
+    for name in names:
         uri = _file_data_uri(project_root / "assets" / name)
         if uri:
             return uri
     return ""
 
 
-def _quote_asset_uri(project_root: Path) -> str:
-    for name in ("quote_background.jpg", "quote_background.png", "default_quote.jpg"):
-        uri = _file_data_uri(project_root / "assets" / name)
-        if uri:
-            return uri
-    return ""
+def _scene_art_uri(
+    project_root: Path,
+    username: str,
+    themes: list[str],
+    kind: str,
+) -> str:
+    """Return artwork tailored to poster, social, or quote proportions."""
+    if kind == "poster":
+        custom = _custom_art_uri(
+            project_root,
+            ("cover_background.jpg", "cover_background.png", "cover_background.webp"),
+        )
+    elif kind == "social":
+        custom = _custom_art_uri(
+            project_root,
+            (
+                "social_background.jpg",
+                "social_background.png",
+                "cover_background.jpg",
+                "cover_background.png",
+            ),
+        )
+    else:
+        custom = _custom_art_uri(
+            project_root,
+            ("quote_background.jpg", "quote_background.png"),
+        )
+
+    if custom:
+        return custom
+
+    index = _scene_index(username, themes)
+    scene_path = project_root / "assets" / f"scene_{index}_{kind}.jpg"
+    return _file_data_uri(scene_path)
+
+
 
 
 
@@ -133,10 +165,17 @@ def _row_theme_overlap(row: dict, themes: list[str]) -> int:
     return sum(1 for theme in themes if theme.casefold() in terms)
 
 
-def _hero_url(rows: list[dict], themes: list[str], rec_groups: dict | None, project_root: Path) -> str:
-    custom = _hero_asset_uri(project_root)
-    if custom:
-        return custom
+def _hero_url(
+    rows: list[dict],
+    themes: list[str],
+    rec_groups: dict | None,
+    project_root: Path,
+    username: str,
+    kind: str,
+) -> str:
+    scene = _scene_art_uri(project_root, username, themes, kind)
+    if scene:
+        return scene
 
     candidates = [row for row in rows if row.get("banner_image") or row.get("cover_image")]
     candidates.sort(
@@ -158,6 +197,8 @@ def _hero_url(rows: list[dict], themes: list[str], rec_groups: dict | None, proj
     if best:
         return str(best.get("banner_image") or best.get("cover_image") or "")
     return ""
+
+
 
 
 def _theme_description(name: str) -> str:
@@ -260,8 +301,8 @@ body { padding:20px; }
   position:absolute;
   inset:0 0 0 43%;
   background-image:var(--hero-image);
-  background-size:cover;
-  background-position:center 68%;
+  background-size:100% 100%;
+  background-position:center;
   background-repeat:no-repeat;
   opacity:.94;
 }
@@ -350,11 +391,22 @@ body { padding:20px; }
 def _poster_html(user, taste_glance, stats, rows, score_format, overall, rec_groups):
     project_root = Path(__file__).resolve().parent.parent
     themes = [str(value) for value in (taste_glance.get("themes") or []) if value][:4]
+    username = str(user.get("name") or "AniList user")
     hero = _embedded_image_uri(
-        _hero_url(rows, themes, rec_groups, project_root),
+        _hero_url(
+            rows,
+            themes,
+            rec_groups,
+            project_root,
+            username,
+            "poster",
+        ),
         project_root,
     )
-    quote_art = _embedded_image_uri(_quote_asset_uri(project_root), project_root)
+    quote_art = _embedded_image_uri(
+        _scene_art_uri(project_root, username, themes, "quote"),
+        project_root,
+    )
     hero_style = f"--hero-image:url('{_esc(hero)}');" if hero else ""
     quote_style = f"--quote-image:url('{_esc(quote_art)}');" if quote_art else ""
 
@@ -396,8 +448,16 @@ def _poster_html(user, taste_glance, stats, rows, score_format, overall, rec_gro
 def _social_html(user, taste_glance, rows, score_format, overall, rec_groups):
     project_root = Path(__file__).resolve().parent.parent
     themes = [str(value) for value in (taste_glance.get("themes") or []) if value][:4]
+    username = str(user.get("name") or "AniList user")
     hero = _embedded_image_uri(
-        _hero_url(rows, themes, rec_groups, project_root),
+        _hero_url(
+            rows,
+            themes,
+            rec_groups,
+            project_root,
+            username,
+            "social",
+        ),
         project_root,
     )
     hero_style = f"--hero-image:url('{_esc(hero)}');" if hero else ""
@@ -408,7 +468,7 @@ def _social_html(user, taste_glance, rows, score_format, overall, rec_groups):
     return f'''<!doctype html><html><head><meta charset="utf-8"><style>
 :root{{--cyan:#55d9ee;--text:#f4f7fb;--muted:#a9b9cc;--hero-image:none}}*{{box-sizing:border-box}}html,body{{margin:0;width:1920px;height:1080px;background:#06111e;color:var(--text);font-family:"Segoe UI",Arial,sans-serif}}
 .card{{position:relative;width:1920px;height:1080px;overflow:hidden;border:3px solid var(--cyan);border-radius:30px;background:linear-gradient(135deg,#061321,#07111e)}}
-.card::before{{content:"";position:absolute;inset:0 0 0 44%;background-image:var(--hero-image);background-size:cover;background-position:center 68%;background-repeat:no-repeat}}
+.card::before{{content:"";position:absolute;inset:0 0 0 44%;background-image:var(--hero-image);background-size:100% 100%;background-position:center;background-repeat:no-repeat}}
 .card::after{{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#061321 0%,rgba(6,19,33,.98) 35%,rgba(6,19,33,.76) 55%,rgba(6,19,33,.08) 84%);pointer-events:none}}
 .card>*{{position:relative;z-index:1}}
 .content{{position:absolute;left:86px;top:72px;width:1130px}}h1{{margin:0;font-size:92px;line-height:.95;font-weight:900;letter-spacing:-3px}}.label{{margin-top:18px;color:var(--cyan);font-size:29px;font-weight:800;letter-spacing:3px;text-transform:uppercase}}h2{{margin:70px 0 0;font-size:58px;line-height:1.14;letter-spacing:-1.5px}}p{{margin:26px 0 0;width:980px;color:#d3deea;font-size:27px;line-height:1.5}}

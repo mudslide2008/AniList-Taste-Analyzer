@@ -1,13 +1,19 @@
-AniList Taste Analyzer 3.2
+AniList Taste Analyzer 3.3
 
-Image pipeline fixes
-- Staff portraits are retained by staff_stats.
-- VA data now requests and caches Staff.image.
-- Recommendation candidates retain cover and banner artwork.
-- Every remote image is downloaded and embedded before browser rendering.
-- Embedded image cache: .anilist_cache/share_images
-- Hero art is composed as a right-side layer instead of stretched across the panel.
-- Quote artwork is confined to the right side.
-- VA cache version 6 rebuilds once to include portraits.
+Artwork pool and aspect-ratio fixes
+- Includes three bundled scenic artwork sets.
+- Different users receive different scenes based on a stable hash of username
+  and strongest themes.
+- The same user receives the same scene on later runs.
+- Each scene has a separately cropped image for:
+  - taste_cover.png hero
+  - share_card.png hero
+  - quote panel
+- Artwork is no longer recropped from one universal background file.
+- Custom artwork still overrides bundled scenes:
+  assets/cover_background.jpg
+  assets/social_background.jpg
+  assets/quote_background.jpg
+- AniList artwork remains a fallback only when no bundled/custom art exists.
 
-No manual image setup is required.
+No AniList or VA cache rebuild is required.
