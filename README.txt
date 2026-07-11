@@ -1,12 +1,8 @@
-AniList Taste Analyzer 2.1
+AniList Taste Analyzer 2.2
 
 Changes
-- Adds a prominent Taste at a glance section with a short big-picture interpretation.
-- Keeps the longer statistical Taste Profile available in an expandable section.
-- Japanese VAs with at least two distinct Main-role franchises remain visible.
-- VAs with one or zero Main-role franchises move into Other recurring VAs, collapsed by default.
-- English VA analysis remains expandable and uses the same lead-first grouping.
-- Actor cards still consolidate seasons into franchises and retain every Main-role franchise.
-- Supporting and Background roles remain available without dominating report length.
-
-No VA cache rebuild is required.
+- Japanese voice actors now start collapsed, matching the English VA section.
+- Community consensus comparisons are stacked vertically inside one collapsed section.
+- Consensus tables use a compact fixed layout with wrapped anime titles.
+- Removed the horizontal scrollbar from the above/below consensus tables.
+- No cache rebuild is required.
