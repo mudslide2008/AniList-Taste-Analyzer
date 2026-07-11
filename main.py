@@ -83,10 +83,11 @@ def main():
         write_csv(rows,out/"anime_data.csv")
         write_json(user,rows,out/"anime_data.json")
         build_html(user,rated,all_entries,html_path,info,overall,stats,identity,taste_glance,rec_groups,not args.no_staff)
-        write_share_assets(user,taste_glance,stats,rated,info,overall,out)
+        write_share_assets(user,taste_glance,stats,rated,info,overall,out,rec_groups)
 
         print(f"\nHTML report: {html_path}")
-        print(f"Share card:   {out/'share_card.png'}")
+        print(f"Social card:  {out/'share_card.png'}")
+        print(f"Taste cover:  {out/'taste_cover.png'}")
         print(f"Text summary: {out/'share_summary.txt'}")
         if not args.no_open: webbrowser.open(html_path.as_uri())
         return 0

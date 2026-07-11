@@ -1,11 +1,21 @@
-AniList Taste Analyzer 2.3.1
+AniList Taste Analyzer 2.5
 
-Share output fixes
-- Share-card text now wraps safely and uses dynamic vertical spacing.
-- Long headlines are capped at two lines.
-- Theme, creator, and voice sections are capped and truncated safely.
-- Text can no longer overlap or run off the image.
-- share_summary.txt no longer lists anime_taste_report.html as though it were a clickable download.
-- The summary now simply notes that the full interactive report was generated alongside it.
+Share-cover redesign
+- Replaced the custom bitmap font with Pillow and real system fonts.
+- Proper pixel-measured word wrapping and spacing.
+- Redesigned 1600x2200 taste_cover.png with:
+  - big-picture taste summary
+  - strongest signals
+  - recurring creators
+  - recurring Japanese VAs
+  - community alignment
+  - best recommendation match
+- Removed redundant repeated statistics and signal lists.
+- Retained a cleaner 1920x1080 share_card.png.
+- Optional assets/cover_background.jpg or .png support.
+- The Windows launcher automatically installs Pillow if needed.
 
-No cache rebuild is required.
+Install manually if required:
+  py -m pip install Pillow
+
+No AniList cache rebuild is required.
