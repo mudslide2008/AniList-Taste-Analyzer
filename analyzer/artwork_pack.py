@@ -46,14 +46,14 @@ CROPS = {
 
 # Match the actual renderer slots.
 OUTPUT_SIZES = {
-    "poster": (1040, 760),
-    "social": (1080, 1080),
-    "quote": (760, 240),
+    "poster": (1536, 500),
+    "social": (1920, 625),
+    "quote": (920, 300),
 }
 
 # Fine-tuned focal points for ImageOps.fit.
 CENTERING = {
-    "poster": (0.62, 0.50),
+    "poster": (0.58, 0.50),
     "social": (0.58, 0.50),
     "quote": (0.58, 0.50),
 }
