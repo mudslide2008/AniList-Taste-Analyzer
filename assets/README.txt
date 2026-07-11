@@ -1,14 +1,11 @@
-Bundled artwork pool
+Artwork selection
 
-Each numbered scene has three crops:
-- scene_N_poster.jpg
-- scene_N_social.jpg
-- scene_N_quote.jpg
+By default, each analyzer run chooses artwork from the user's own highly rated
+anime banners/covers. The chosen hero is reused across the poster and social card,
+while a second distinct image is used for the quote strip when available.
 
-The scene is selected deterministically from the username and strongest themes,
-so different users get different artwork without the result changing every run.
+The artwork rerolls on each new analyzer run.
 
 Optional overrides:
 - cover_background.jpg or .png
-- social_background.jpg or .png
 - quote_background.jpg or .png
