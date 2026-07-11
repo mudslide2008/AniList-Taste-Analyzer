@@ -1,16 +1,15 @@
-AniList Taste Analyzer 2.7
+AniList Taste Analyzer 3.0
 
-Share-image fixes
-- Hero artwork is chosen by overlap with the report's strongest themes, not just
-  by popularity among top-rated shows.
-- The social card now uses artwork on the right and fills its lower section with
-  themes and the best recommendation instead of leaving a large empty area.
-- Japanese VA portraits are now fetched and cached.
-- Missing portraits display initials instead of empty circles.
-- Creator/VA rows wrap names and roles safely.
-- Lower cover panels use content-driven heights instead of fixed 700px boxes.
-- The cover is cropped to its actual content height, removing dead space.
-- Recommendation cover art is larger and better integrated.
-- Existing custom assets/cover_background.jpg or .png still override automatic art.
+Share-cover renderer redesign
+- Primary cover rendering now uses HTML/CSS through installed Edge or Chrome.
+- Produces taste_cover.html, taste_cover.png, share_card.html, and share_card.png.
+- Uses layered hero artwork, SVG icons, responsive panels, portraits, and recommendation art.
+- Browser layout replaces manual Pillow box placement.
+- Pillow remains an automatic fallback if browser rendering fails.
 
-The VA cache schema changed, so the analyzer will rebuild voice-actor cache data once.
+Requirements
+- Pillow
+- Playwright Python package
+- Microsoft Edge or Google Chrome installed
+
+The Windows launcher installs Python dependencies automatically.
