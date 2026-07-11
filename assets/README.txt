@@ -1,10 +1,11 @@
-Optional cover artwork
+Cover artwork
 
-Place either of these files here:
-- cover_background.jpg
-- cover_background.png
+Bundled defaults:
+- default_hero.jpg
+- default_quote.jpg
 
-The analyzer will darken and crop it into the upper part of taste_cover.png.
-Leave this folder empty to use the built-in navy/cyan gradient design.
+Optional overrides:
+- cover_background.jpg or cover_background.png
+- quote_background.jpg or quote_background.png
 
-Only use artwork you have permission to share.
+The renderer uses your override first, then the bundled artwork, then AniList imagery.

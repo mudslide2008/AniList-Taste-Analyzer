@@ -42,19 +42,39 @@ def _creator_parts(value: str) -> tuple[str, str]:
     return value.strip(), ""
 
 
-def _local_asset_uri(project_root: Path) -> str:
-    for name in ("cover_background.jpg", "cover_background.png", "cover_background.webp"):
-        path = project_root / "assets" / name
-        if path.exists():
-            mime = {
-                ".jpg": "image/jpeg",
-                ".jpeg": "image/jpeg",
-                ".png": "image/png",
-                ".webp": "image/webp",
-            }.get(path.suffix.lower(), "application/octet-stream")
-            payload = base64.b64encode(path.read_bytes()).decode("ascii")
-            return f"data:{mime};base64,{payload}"
+def _file_data_uri(path: Path) -> str:
+    if not path.exists():
+        return ""
+    mime = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+    }.get(path.suffix.lower(), "application/octet-stream")
+    payload = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{payload}"
+
+
+def _hero_asset_uri(project_root: Path) -> str:
+    for name in (
+        "cover_background.jpg",
+        "cover_background.png",
+        "cover_background.webp",
+        "default_hero.jpg",
+    ):
+        uri = _file_data_uri(project_root / "assets" / name)
+        if uri:
+            return uri
     return ""
+
+
+def _quote_asset_uri(project_root: Path) -> str:
+    for name in ("quote_background.jpg", "quote_background.png", "default_quote.jpg"):
+        uri = _file_data_uri(project_root / "assets" / name)
+        if uri:
+            return uri
+    return ""
+
 
 
 def _row_theme_overlap(row: dict, themes: list[str]) -> int:
@@ -66,7 +86,7 @@ def _row_theme_overlap(row: dict, themes: list[str]) -> int:
 
 
 def _hero_url(rows: list[dict], themes: list[str], rec_groups: dict | None, project_root: Path) -> str:
-    custom = _local_asset_uri(project_root)
+    custom = _hero_asset_uri(project_root)
     if custom:
         return custom
 
@@ -166,7 +186,7 @@ def _recommendation_card(best: dict | None) -> str:
 POSTER_CSS = r'''
 :root {
   --bg:#06111e; --panel:rgba(8,23,39,.94); --panel-soft:rgba(13,35,56,.9);
-  --line:#2c5e78; --cyan:#55d9ee; --text:#f6f8fc; --muted:#a9b9cc; --hero-image:none;
+  --line:#2c5e78; --cyan:#55d9ee; --text:#f6f8fc; --muted:#a9b9cc; --hero-image:none; --quote-image:none;
 }
 * { box-sizing:border-box; }
 html,body {
@@ -222,7 +242,24 @@ body { padding:20px; }
 .rec-cover { width:125px; height:178px; object-fit:cover; border-radius:12px; border:1px solid var(--line); background:#132b42; }
 .rec-title { margin-top:8px; font-size:29px; line-height:1.16; font-weight:900; }
 .rec-why { margin-top:12px; color:var(--muted); font-size:17px; line-height:1.42; }
-.quote { display:grid; grid-template-columns:64px 1fr; gap:16px; align-items:start; margin-top:24px; padding:23px 28px; border:1px solid var(--line); border-radius:20px; background:linear-gradient(90deg,rgba(8,33,52,.96),rgba(9,22,37,.94)); }
+.quote {
+  position:relative;
+  display:grid;
+  grid-template-columns:64px 1fr;
+  gap:16px;
+  align-items:start;
+  margin-top:24px;
+  min-height:168px;
+  padding:27px 420px 27px 28px;
+  border:1px solid var(--line);
+  border-radius:20px;
+  overflow:hidden;
+  background:
+    linear-gradient(90deg,rgba(8,33,52,.99) 0%,rgba(8,28,47,.94) 48%,rgba(8,23,39,.28) 78%,rgba(8,23,39,.12) 100%),
+    var(--quote-image);
+  background-size:cover;
+  background-position:center right;
+}
 .quote-mark { color:var(--cyan); font-size:74px; line-height:.8; font-weight:900; }
 .quote p { margin:4px 0 0; font-size:20px; line-height:1.5; color:#e4ebf3; }
 .footer { display:flex; align-items:center; justify-content:center; gap:18px; padding:18px 0 2px; color:var(--cyan); font-size:18px; letter-spacing:2px; text-transform:uppercase; }
@@ -235,7 +272,9 @@ def _poster_html(user, taste_glance, stats, rows, score_format, overall, rec_gro
     project_root = Path(__file__).resolve().parent.parent
     themes = [str(value) for value in (taste_glance.get("themes") or []) if value][:4]
     hero = _hero_url(rows, themes, rec_groups, project_root)
+    quote_art = _quote_asset_uri(project_root)
     hero_style = f'--hero-image:url("{_esc(hero)}");' if hero else ""
+    quote_style = f'--quote-image:url("{_esc(quote_art)}");' if quote_art else ""
 
     creators = "".join(_person_card(stat, True) for stat in _top_stats(stats.get("staff") or [], 4))
     vas = "".join(_person_card(stat, False) for stat in _top_stats(stats.get("japanese_vas") or [], 4))
@@ -251,7 +290,7 @@ def _poster_html(user, taste_glance, stats, rows, score_format, overall, rec_gro
     best = _best_recommendation(rec_groups)
 
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=1600, initial-scale=1"><style>{POSTER_CSS}</style></head>
-<body style="{hero_style}"><div class="poster">
+<body style="{hero_style}{quote_style}"><div class="poster">
 <section class="hero"><div class="header-row"><div><h1 class="username">{_esc(user.get("name") or "AniList user")}</h1><div class="report-label">Anime Taste Report</div></div>
 <aside class="metrics">
 <div class="metric"><div class="metric-icon">{_theme_icon("Educational")}</div><div><strong>{len(rows)}</strong><span>Rated anime</span></div></div>
