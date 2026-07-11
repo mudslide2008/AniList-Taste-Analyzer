@@ -1,11 +1,12 @@
-AniList Taste Analyzer 1.9.5
+AniList Taste Analyzer 2.0
 
-Franchise deduplication fix
-- The data layer already grouped connected seasons into franchises.
-- The role-specific report formatter was accidentally replacing the franchise
-  count with the number of season appearances.
-- VA appearances now retain their franchise ID and franchise-level rating.
-- Main, supporting, and background VA tables count distinct franchises.
-- Multiple seasons remain visible as examples, but contribute only one count
-  and one averaged rating per franchise.
-- No voice actor cache rebuild is required for this update.
+Voice actor report redesign
+- Voice actors are displayed as individual cards instead of six separate tables.
+- Each actor appears once per language.
+- Season-level appearances are consolidated by franchise.
+- Duplicate character credits within a franchise are merged.
+- Every Main-role franchise is displayed with no cutoff.
+- Supporting and Background groups are collapsed per actor.
+- Supporting and Background groups show five franchises initially and expose the remainder through Show more.
+- Japanese voice actors remain visible by default; the English section is expandable.
+- Existing VA cache data remains compatible; no rebuild is required.

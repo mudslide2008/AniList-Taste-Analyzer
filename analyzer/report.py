@@ -145,172 +145,166 @@ def linked_stat_rows(stats, overall, score_format, limit=20, show_roles=False):
             f"<td>{display_score(stat.average,score_format)}</td>"
             f"<td>{stat.top_rate:.0%}</td><td class='{cls}'>{top_lift:+.0%}</td>"
         )
-        if show_roles:
-            prominence=[]
-            if getattr(stat,"main_roles",0):
-                prominence.append(f"{getattr(stat,'main_roles',0)} main")
-            if getattr(stat,"supporting_roles",0):
-                prominence.append(f"{getattr(stat,'supporting_roles',0)} supporting")
-            if getattr(stat,"background_roles",0):
-                prominence.append(f"{getattr(stat,'background_roles',0)} background")
-            cells += f"<td>{esc(', '.join(prominence) or '—')}</td>"
-            examples=[]
-            for appearance in getattr(stat,"appearances",[])[:5]:
-                role_parts=[]
-                for role in appearance.get("roles") or []:
-                    character=role.get("character") or "role not listed"
-                    role_notes=(role.get("role_notes") or "").strip()
-                    if role_notes:
-                        character=f"{character} — {role_notes}"
-                    prominence=(role.get("role") or "UNKNOWN").title()
-                    role_parts.append(f"{esc(character)} <span class='role-badge role-{prominence.lower()}'>{prominence}</span>")
-                roles=", ".join(role_parts) or "role not listed"
-                anime_name=esc(appearance.get("anime") or "Unknown anime")
-                anime_url=appearance.get("anime_url") or ""
-                anime_html=f"<a href='{esc(anime_url)}'>{anime_name}</a>" if anime_url else anime_name
-                examples.append(f"{roles} — {anime_html}")
-            cells += f"<td>{'<br>'.join(examples) if examples else '—'}</td>"
         body.append(f"<tr>{cells}</tr>")
-    colspan=7 if show_roles else 5
-    return ''.join(body) or f"<tr><td colspan='{colspan}' class='muted'>Not enough recurring credits.</td></tr>"
+    return ''.join(body) or "<tr><td colspan='5' class='muted'>Not enough recurring credits.</td></tr>"
+
 
 def people_table(title, stats, overall, score_format, note, collapsible=False, show_roles=False):
-    extra="<th>Prominence</th><th>Roles in this list</th>" if show_roles else ""
-    section=f"""<section><h2>{esc(title)}</h2><p class='hint'>{esc(note)}</p><div class='table-wrap'><table><thead><tr><th>Name</th><th>Anime</th><th>Average</th><th>Top-rate</th><th>Top-rate lift</th>{extra}</tr></thead><tbody>{linked_stat_rows(stats,overall,score_format,show_roles=show_roles)}</tbody></table></div></section>"""
+    section=f"""<section><h2>{esc(title)}</h2><p class='hint'>{esc(note)}</p><div class='table-wrap'><table><thead><tr><th>Name</th><th>Anime</th><th>Average</th><th>Top-rate</th><th>Top-rate lift</th></tr></thead><tbody>{linked_stat_rows(stats,overall,score_format)}</tbody></table></div></section>"""
     return f"<details><summary>{esc(title)}</summary>{section}</details>" if collapsible else section
 
-def filter_va_stats_by_role(stats, role_name, overall, max_score):
-    """Create a role-specific VA view while preserving franchise deduplication."""
-    filtered=[]
-    target=role_name.upper()
 
-    for stat in stats:
-        appearances=[]
-        franchise_ratings={}
+def _clean_role_label(role):
+    character=(role.get("character") or "Unknown character").strip()
+    note=(role.get("role_notes") or "").strip()
+    if note and note.lower() not in character.lower():
+        character=f"{character} — {note}"
+    return character
 
-        for appearance in getattr(stat,"appearances",[]):
-            matching=[
-                role for role in appearance.get("roles") or []
-                if (role.get("role") or "UNKNOWN").upper()==target
-            ]
-            if not matching:
-                continue
 
-            clone=dict(appearance)
-            clone["roles"]=matching
-            clone["main_count"]=len(matching) if target=="MAIN" else 0
-            clone["supporting_count"]=len(matching) if target=="SUPPORTING" else 0
-            clone["background_count"]=len(matching) if target=="BACKGROUND" else 0
-            appearances.append(clone)
+def _consolidate_actor_appearances(stat):
+    """Merge season-level appearances into one entry per franchise.
 
-            franchise_id=clone.get("franchise_id")
-            if franchise_id is None:
-                # Backward-safe fallback for malformed or legacy in-memory data.
-                franchise_id=clone.get("anime_url") or clone.get("anime")
-            franchise_ratings[franchise_id]=clone.get(
-                "franchise_rating",
-                clone.get("rating", stat.average),
-            )
+    Character names are deduplicated within each role group. Individual season
+    titles remain available as a compact count/list, but never inflate the
+    franchise count displayed for an actor.
+    """
+    franchises={}
+    for appearance in getattr(stat,"appearances",[]):
+        franchise_id=appearance.get("franchise_id")
+        if franchise_id is None:
+            franchise_id=appearance.get("anime_url") or appearance.get("anime")
+        item=franchises.setdefault(franchise_id,{
+            "id":franchise_id,
+            "titles":[],
+            "urls":[],
+            "rating":appearance.get("franchise_rating",appearance.get("rating",stat.average)),
+            "MAIN":set(),
+            "SUPPORTING":set(),
+            "BACKGROUND":set(),
+            "UNKNOWN":set(),
+        })
+        title=appearance.get("anime") or "Unknown anime"
+        url=appearance.get("anime_url") or ""
+        if title not in item["titles"]:
+            item["titles"].append(title)
+            item["urls"].append(url)
+        for role in appearance.get("roles") or []:
+            prominence=(role.get("role") or "UNKNOWN").upper()
+            if prominence not in item:
+                prominence="UNKNOWN"
+            item[prominence].add(_clean_role_label(role))
 
-        if not appearances:
-            continue
-
-        role_ratings=list(franchise_ratings.values())
-        role_average=statistics.fmean(role_ratings)
-        role_top_rate=sum(
-            rating >= max_score
-            for rating in role_ratings
-        ) / len(role_ratings) if role_ratings else 0.0
-
-        clone_stat=type(stat)(
-            stat.name,
-            len(franchise_ratings),
-            role_average,
-            role_average - overall,
-            role_top_rate,
-            role_ratings,
+    def relevance(item):
+        return (
+            bool(item["MAIN"]),
+            bool(item["SUPPORTING"]),
+            item.get("rating") or 0,
+            len(item["MAIN"])+len(item["SUPPORTING"])+len(item["BACKGROUND"]),
+            (item["titles"][0] if item["titles"] else "").lower(),
         )
-        clone_stat.url=getattr(stat,"url","")
-        clone_stat.appearances=appearances
-        clone_stat.main_roles=sum(item.get("main_count",0) for item in appearances)
-        clone_stat.supporting_roles=sum(item.get("supporting_count",0) for item in appearances)
-        clone_stat.background_roles=sum(item.get("background_count",0) for item in appearances)
-        filtered.append(clone_stat)
+    return sorted(franchises.values(),key=relevance,reverse=True)
 
-    return sorted(
-        filtered,
-        key=lambda stat:(stat.count,stat.top_rate,stat.average,stat.name.lower()),
+
+def _franchise_name(item):
+    titles=item.get("titles") or ["Unknown anime"]
+    first=titles[0]
+    # Prefer the shortest connected title as the compact franchise label.
+    base=min(titles,key=lambda value:(len(value),value.lower()))
+    return base, len(titles)
+
+
+def _role_lines(franchises, role_name, show_all=False, initial_limit=5):
+    relevant=[item for item in franchises if item.get(role_name)]
+    if not relevant:
+        return ""
+
+    def line(item):
+        title, season_count=_franchise_name(item)
+        urls=item.get("urls") or []
+        url=next((value for value in urls if value),"")
+        title_html=f"<a href='{esc(url)}'>{esc(title)}</a>" if url else esc(title)
+        season_note=f" <span class='season-count'>({season_count} entries)</span>" if season_count>1 else ""
+        characters=", ".join(esc(value) for value in sorted(item[role_name],key=str.lower))
+        return f"<li><span class='va-characters'>{characters}</span><span class='va-anime'> — {title_html}{season_note}</span></li>"
+
+    if show_all or len(relevant)<=initial_limit:
+        return f"<ul class='va-role-list'>{''.join(line(item) for item in relevant)}</ul>"
+
+    visible=relevant[:initial_limit]
+    hidden=relevant[initial_limit:]
+    return (
+        f"<ul class='va-role-list'>{''.join(line(item) for item in visible)}</ul>"
+        f"<details class='va-more'><summary>Show {len(hidden)} more</summary>"
+        f"<ul class='va-role-list'>{''.join(line(item) for item in hidden)}</ul></details>"
+    )
+
+
+def _actor_card(stat, score_format):
+    franchises=_consolidate_actor_appearances(stat)
+    main_count=sum(1 for item in franchises if item["MAIN"])
+    supporting_count=sum(1 for item in franchises if item["SUPPORTING"])
+    background_count=sum(1 for item in franchises if item["BACKGROUND"])
+
+    actor_name=(
+        f"<a href='{esc(getattr(stat,'url',''))}'>{esc(stat.name)}</a>"
+        if getattr(stat,'url','') else esc(stat.name)
+    )
+    main_html=_role_lines(franchises,"MAIN",show_all=True)
+    supporting_html=_role_lines(franchises,"SUPPORTING",show_all=False)
+    background_html=_role_lines(franchises,"BACKGROUND",show_all=False)
+
+    role_sections=[]
+    if main_html:
+        role_sections.append(f"<div class='va-role-section'><h4>Main roles <span>{main_count}</span></h4>{main_html}</div>")
+    if supporting_html:
+        role_sections.append(
+            f"<details class='va-role-section'><summary>Supporting roles ({supporting_count})</summary>{supporting_html}</details>"
+        )
+    if background_html:
+        role_sections.append(
+            f"<details class='va-role-section'><summary>Background roles ({background_count})</summary>{background_html}</details>"
+        )
+
+    return (
+        "<article class='va-card'>"
+        f"<div class='va-card-head'><div><h3>{actor_name}</h3>"
+        f"<div class='hint'>{stat.count} distinct franchises</div></div>"
+        f"<div class='va-score'><strong>{display_score(stat.average,score_format)}</strong>"
+        f"<span>{stat.top_rate:.0%} top-rated</span></div></div>"
+        f"{''.join(role_sections)}"
+        "</article>"
+    )
+
+
+def voice_actor_section(title, stats, score_format, collapsible=False):
+    ranked=sorted(
+        stats,
+        key=lambda stat:(
+            sum(1 for item in _consolidate_actor_appearances(stat) if item["MAIN"]),
+            stat.count,
+            stat.top_rate,
+            stat.average,
+            stat.name.lower(),
+        ),
         reverse=True,
     )
-
-def va_role_table(title, stats, overall, score_format, role_name, collapsible=False):
-    role_stats=filter_va_stats_by_role(stats,role_name,overall,score_format['max'])
-    note_map={
-        "MAIN":"Recurring performers linked through MAIN-character roles across distinct franchises. Separate seasons count once.",
-        "SUPPORTING":"Recurring performers linked through SUPPORTING-character roles across distinct franchises. Separate seasons count once.",
-        "BACKGROUND":"Recurring performers linked through BACKGROUND-character roles across distinct franchises. Separate seasons count once.",
-    }
-    return people_table(
-        title,
-        role_stats,
-        overall,
-        score_format,
-        note_map[role_name.upper()],
-        collapsible=collapsible,
-        show_roles=True,
-    )
+    if not ranked:
+        content="<section><h2>{}</h2><p class='muted'>Not enough recurring credits.</p></section>".format(esc(title))
+    else:
+        cards=''.join(_actor_card(stat,score_format) for stat in ranked)
+        content=(
+            f"<section><h2>{esc(title)}</h2>"
+            "<p class='hint'>Each actor appears once. Connected seasons are consolidated into franchises; every Main-role franchise is shown, while Supporting and Background roles are expandable.</p>"
+            f"<div class='va-grid'>{cards}</div></section>"
+        )
+    return f"<details><summary>{esc(title)}</summary>{content}</details>" if collapsible else content
 
 
 def voice_actor_tables(japanese_stats, english_stats, overall, score_format):
     return (
-        va_role_table(
-            "Japanese voice actors — Main roles",
-            japanese_stats,
-            overall,
-            score_format,
-            "MAIN",
-            collapsible=False,
-        )
-        + va_role_table(
-            "Japanese voice actors — Supporting roles",
-            japanese_stats,
-            overall,
-            score_format,
-            "SUPPORTING",
-            collapsible=True,
-        )
-        + va_role_table(
-            "Japanese voice actors — Background roles",
-            japanese_stats,
-            overall,
-            score_format,
-            "BACKGROUND",
-            collapsible=True,
-        )
-        + va_role_table(
-            "English voice actors — Main roles",
-            english_stats,
-            overall,
-            score_format,
-            "MAIN",
-            collapsible=True,
-        )
-        + va_role_table(
-            "English voice actors — Supporting roles",
-            english_stats,
-            overall,
-            score_format,
-            "SUPPORTING",
-            collapsible=True,
-        )
-        + va_role_table(
-            "English voice actors — Background roles",
-            english_stats,
-            overall,
-            score_format,
-            "BACKGROUND",
-            collapsible=True,
-        )
+        voice_actor_section("Japanese voice actors",japanese_stats,score_format,collapsible=False)
+        + voice_actor_section("English voice actors",english_stats,score_format,collapsible=True)
     )
 
 def build_html(user, rows, all_entries, output, score_format, overall, stats, identity, recommendation_groups, include_staff):
@@ -377,7 +371,7 @@ section{{margin-top:28px;background:var(--panel);border:1px solid var(--line);bo
 .table-wrap{{overflow:auto}}table{{width:100%;border-collapse:collapse;min-width:680px}}th,td{{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left}}th{{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}}.positive{{color:var(--good)}}.negative{{color:var(--bad)}}.neutral{{color:var(--muted)}}
 .dist-row{{display:grid;grid-template-columns:90px 1fr 40px;gap:10px;align-items:center;margin:10px 0}}.bar{{height:12px;background:#263346;border-radius:999px;overflow:hidden}}.bar i{{display:block;height:100%;background:var(--accent);border-radius:inherit}}
 details{{margin-top:22px}}summary{{cursor:pointer;font-size:20px;font-weight:700;padding:14px 18px;background:var(--panel);border:1px solid var(--line);border-radius:12px}}details[open] summary{{border-radius:12px 12px 0 0}}details>section{{margin-top:0;border-radius:0 0 16px 16px}}.rec-details{{margin-top:12px}}.rec-details summary{{font-size:16px;background:var(--panel2);padding:10px 14px}}.rec-details .rec-block{{border-radius:0 0 12px 12px;margin-top:0}}
-.role-badge{{display:inline-block;font-size:10px;line-height:1;padding:3px 5px;border:1px solid var(--line);border-radius:999px;color:var(--muted);vertical-align:middle}}.role-main{{color:var(--good)}}.role-supporting{{color:var(--accent)}}.role-background{{opacity:.72}}footer{{margin-top:36px;color:var(--muted);font-size:13px}}@media(max-width:650px){{main{{padding:16px 10px 50px}}section,.hero{{padding:15px}}}}
+.va-grid{{display:grid;gap:14px}}.va-card{{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:16px}}.va-card-head{{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}}.va-card h3{{margin:0;font-size:20px}}.va-score{{text-align:right;white-space:nowrap}}.va-score strong,.va-score span{{display:block}}.va-score span,.season-count{{color:var(--muted);font-size:12px}}.va-role-section{{margin-top:14px}}.va-role-section h4{{margin:0 0 7px;font-size:15px}}.va-role-section h4 span{{color:var(--muted);font-weight:400}}.va-role-section>summary{{font-size:14px;padding:8px 10px;background:rgba(0,0,0,.14)}}.va-role-list{{margin:7px 0 0;padding-left:20px}}.va-role-list li{{margin:5px 0}}.va-characters{{font-weight:600}}.va-anime{{color:var(--muted)}}.va-more{{margin:8px 0 0 20px}}.va-more>summary{{display:inline-block;font-size:12px;padding:5px 9px;background:rgba(0,0,0,.16)}}footer{{margin-top:36px;color:var(--muted);font-size:13px}}@media(max-width:650px){{main{{padding:16px 10px 50px}}section,.hero{{padding:15px}}}}
 </style></head><body><main>
 <div class='hero'><div class='muted'>Unofficial AniList taste analysis</div><h1>{esc(user['name'])}</h1><div><a href='{esc(user.get('siteUrl',''))}'>Open AniList profile</a> · Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</div>
 <div class='cards'><div class='card'><span>Rated anime</span><strong>{len(ratings)}</strong></div><div class='card'><span>Scoring system</span><strong>{esc(score_format['label'])}</strong></div><div class='card'><span>Average</span><strong>{display_score(overall,score_format)}</strong></div><div class='card'><span>Top ratings</span><strong>{top_count}</strong></div><div class='card'><span>Top-rating rate</span><strong>{top_count/len(ratings):.0%}</strong></div></div></div>
