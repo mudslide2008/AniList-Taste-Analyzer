@@ -4,14 +4,12 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from PIL import Image, ImageEnhance, ImageOps
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 
 PACK_FILENAME = "artwork_asset_pack.png"
 EXPECTED_SIZE = (1182, 1330)
 
-# Image-only cells in the new 15-theme asset sheet.
-# Labels, icons, borders, and headers are excluded.
 COLUMNS = {
     "poster": (191, 505),
     "social": (510, 783),
@@ -44,18 +42,24 @@ CROPS = {
     for theme, (y1, y2) in ROWS.items()
 }
 
-# Match the actual renderer slots.
+# These are the exact rendered image regions.
 OUTPUT_SIZES = {
     "poster": (1536, 500),
     "social": (1920, 625),
     "quote": (920, 300),
 }
 
-# Fine-tuned focal points for ImageOps.fit.
-CENTERING = {
-    "poster": (0.58, 0.50),
-    "social": (0.58, 0.50),
-    "quote": (0.58, 0.50),
+# The illustration is intentionally confined to the right side.
+ART_BOXES = {
+    "poster": (610, 0, 1536, 500),
+    "social": (820, 0, 1920, 625),
+    "quote": (390, 0, 920, 300),
+}
+
+FOCAL_X = {
+    "poster": 0.88,
+    "social": 0.90,
+    "quote": 0.70,
 }
 
 THEME_KEYWORDS = {
@@ -131,10 +135,7 @@ def choose_art_theme(
         scores[category] = score
 
     best_score = max(scores.values(), default=0)
-    tied = sorted(
-        category for category, score in scores.items()
-        if score == best_score
-    )
+    tied = sorted(category for category, score in scores.items() if score == best_score)
 
     if best_score > 0 and len(tied) == 1:
         return tied[0]
@@ -145,19 +146,77 @@ def choose_art_theme(
     return choices[int.from_bytes(digest[:4], "big") % len(choices)]
 
 
+def _compose_destination_asset(source: Image.Image, kind: str) -> Image.Image:
+    """Compose artwork for the real destination rather than stretching a crop."""
+    width, height = OUTPUT_SIZES[kind]
+    x1, y1, x2, y2 = ART_BOXES[kind]
+    art_width = x2 - x1
+    art_height = y2 - y1
+
+    # A soft full-canvas atmospheric background avoids hard empty seams.
+    atmosphere = ImageOps.fit(
+        source,
+        (width, height),
+        method=Image.Resampling.LANCZOS,
+        centering=(FOCAL_X[kind], 0.5),
+    )
+    atmosphere = atmosphere.filter(ImageFilter.GaussianBlur(radius=18))
+    atmosphere = ImageEnhance.Brightness(atmosphere).enhance(0.34)
+    atmosphere = ImageEnhance.Color(atmosphere).enhance(0.75)
+
+    canvas = atmosphere.convert("RGBA")
+
+    # Crisp illustration only occupies its intended right-hand region.
+    foreground = ImageOps.fit(
+        source,
+        (art_width, art_height),
+        method=Image.Resampling.LANCZOS,
+        centering=(FOCAL_X[kind], 0.5),
+    ).convert("RGBA")
+    foreground = ImageEnhance.Contrast(foreground).enhance(1.04)
+    foreground = ImageEnhance.Color(foreground).enhance(1.06)
+    canvas.alpha_composite(foreground, (x1, y1))
+
+    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    # Strong text-safe zone on the left, fading smoothly over the artwork.
+    fade_start = int(width * (0.38 if kind != "quote" else 0.34))
+    fade_end = int(width * (0.76 if kind != "quote" else 0.72))
+    for x in range(width):
+        if x <= fade_start:
+            alpha = 246
+        elif x >= fade_end:
+            alpha = 10
+        else:
+            ratio = (x - fade_start) / max(1, fade_end - fade_start)
+            alpha = int(246 * (1.0 - ratio) + 10 * ratio)
+        draw.line((x, 0, x, height), fill=(4, 15, 27, alpha))
+
+    # Gentle top/bottom vignette keeps white type readable without crushing art.
+    vignette = max(22, height // 7)
+    for y in range(vignette):
+        alpha = int(70 * (1 - y / vignette))
+        draw.line((0, y, width, y), fill=(2, 9, 18, alpha))
+        draw.line((0, height - 1 - y, width, height - 1 - y), fill=(2, 9, 18, alpha))
+
+    canvas = Image.alpha_composite(canvas, overlay)
+    return canvas.convert("RGB")
+
+
 def extract_artwork_pack(project_root: Path) -> dict[str, dict[str, Path]]:
     source = project_root / "assets" / PACK_FILENAME
     if not source.exists():
         return {}
 
-    digest = hashlib.sha256(source.read_bytes()).hexdigest()[:16]
+    # Version tag ensures old badly composed cached crops are never reused.
+    digest = hashlib.sha256(source.read_bytes() + b"destination-compose-v3").hexdigest()[:16]
     cache_root = project_root / ".anilist_cache" / "artwork_pack" / digest
     manifest: dict[str, dict[str, Path]] = {}
 
     with Image.open(source) as pack:
         pack = pack.convert("RGB")
         if pack.size != EXPECTED_SIZE:
-            # Artwork should never crash the main analyzer.
             return {}
 
         for category, variants in CROPS.items():
@@ -170,17 +229,12 @@ def extract_artwork_pack(project_root: Path) -> dict[str, dict[str, Path]]:
                     continue
 
                 output.parent.mkdir(parents=True, exist_ok=True)
-                crop = pack.crop(box)
-                crop = ImageEnhance.Color(crop).enhance(1.04)
-                crop = ImageEnhance.Contrast(crop).enhance(1.04)
+                source_crop = pack.crop(box)
+                source_crop = ImageEnhance.Color(source_crop).enhance(1.04)
+                source_crop = ImageEnhance.Contrast(source_crop).enhance(1.04)
 
-                crop = ImageOps.fit(
-                    crop,
-                    OUTPUT_SIZES[kind],
-                    method=Image.Resampling.LANCZOS,
-                    centering=CENTERING[kind],
-                )
-                crop.save(output, quality=95, optimize=True)
+                composed = _compose_destination_asset(source_crop, kind)
+                composed.save(output, quality=95, optimize=True)
 
     return manifest
 

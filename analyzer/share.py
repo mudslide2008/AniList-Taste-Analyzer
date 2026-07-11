@@ -213,7 +213,7 @@ html,body { margin:0; width:1600px; background:linear-gradient(180deg,#081a2d,#0
 body { padding:20px; }
 .poster { border:2px solid var(--cyan); border-radius:28px; overflow:hidden; background:#06111e; }
 .hero { position:relative; min-height:500px; padding:38px 58px 34px; overflow:hidden; background:#061321; }
-.hero::before { content:""; position:absolute; inset:0; background-image:var(--hero-image); background-size:cover; background-position:center; background-repeat:no-repeat; }
+.hero::before { content:""; position:absolute; inset:0; background-image:var(--hero-image); background-size:100% 100%; background-position:center; background-repeat:no-repeat; }
 .hero::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,rgba(4,14,25,.99) 0%,rgba(4,14,25,.96) 34%,rgba(4,14,25,.68) 56%,rgba(4,14,25,.08) 84%),linear-gradient(180deg,transparent 62%,#06111e 100%); border-bottom:2px solid rgba(85,217,238,.48); }
 .hero > * { position:relative; z-index:1; }
 .header-row { display:grid; grid-template-columns:minmax(0,1fr) 330px; gap:36px; }
@@ -241,7 +241,7 @@ body { padding:20px; }
 .eyebrow { color:var(--muted); text-transform:uppercase; font-size:14px; font-weight:800; } .alignment { margin-top:7px; color:var(--cyan); font-size:28px; font-weight:900; }
 .recommendation { display:grid; grid-template-columns:112px 1fr; gap:16px; margin-top:10px; } .rec-cover { width:112px; height:160px; object-fit:cover; border-radius:12px; } .rec-title { margin-top:8px; font-size:25px; font-weight:900; } .rec-why { margin-top:10px; color:var(--muted); font-size:15px; }
 .quote { position:relative; display:grid; grid-template-columns:58px 1fr; gap:14px; margin-top:22px; min-height:190px; padding:28px 590px 28px 28px; border:1px solid var(--line); border-radius:20px; overflow:hidden; background:#0a2034; }
-.quote::before { content:""; position:absolute; right:0; top:0; bottom:0; width:920px; background-image:var(--quote-image); background-size:cover; background-position:center; }
+.quote::before { content:""; position:absolute; right:0; top:0; bottom:0; width:920px; background-image:var(--quote-image); background-size:100% 100%; background-position:center; }
 .quote::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,#0a2034 0%,rgba(10,32,52,.98) 42%,rgba(10,32,52,.58) 66%,rgba(10,32,52,.04) 92%); }
 .quote > * { position:relative; z-index:1; } .quote-mark { color:var(--cyan); font-size:68px; } .quote p { margin:4px 0 0; font-size:18px; line-height:1.48; }
 .footer { text-align:center; padding:18px 0 2px; color:var(--cyan); font-size:16px; letter-spacing:2px; text-transform:uppercase; }
@@ -314,7 +314,7 @@ def _social_html(user, taste_glance, rows, score_format, overall, rec_groups):
     return f'''<!doctype html><html><head><meta charset="utf-8"><style>
 :root{{--cyan:#55d9ee;--text:#f4f7fb;--muted:#a9b9cc;--hero-image:none}}*{{box-sizing:border-box}}html,body{{margin:0;width:1920px;height:1080px;background:#06111e;color:var(--text);font-family:"Segoe UI",Arial,sans-serif}}
 .card{{position:relative;width:1920px;height:1080px;overflow:hidden;border:3px solid var(--cyan);border-radius:30px;background:#06111e}}
-.card::before{{content:"";position:absolute;left:0;right:0;top:0;height:625px;background-image:var(--hero-image);background-size:cover;background-position:center;background-repeat:no-repeat}}
+.card::before{{content:"";position:absolute;left:0;right:0;top:0;height:625px;background-image:var(--hero-image);background-size:100% 100%;background-position:center;background-repeat:no-repeat}}
 .card::after{{content:"";position:absolute;left:0;right:0;top:0;height:625px;background:linear-gradient(90deg,rgba(4,14,25,.99) 0%,rgba(4,14,25,.94) 36%,rgba(4,14,25,.45) 64%,rgba(4,14,25,.06) 88%),linear-gradient(180deg,transparent 62%,#06111e 100%);pointer-events:none}}
 .card>*{{position:relative;z-index:1}}
 .content{{position:absolute;left:86px;top:62px;width:1130px}}h1{{margin:0;font-size:84px;line-height:.95;font-weight:900;letter-spacing:-3px}}.label{{margin-top:18px;color:var(--cyan);font-size:29px;font-weight:800;letter-spacing:3px;text-transform:uppercase}}h2{{margin:58px 0 0;font-size:52px;line-height:1.14;letter-spacing:-1.5px}}p{{margin:22px 0 0;width:930px;color:#d3deea;font-size:24px;line-height:1.5}}

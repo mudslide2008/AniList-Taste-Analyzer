@@ -1,14 +1,11 @@
-AniList Taste Analyzer 3.4.1
+AniList Taste Analyzer 3.6
 
-Artwork-pack packaging fix
-- Includes assets/artwork_asset_pack.png in the ZIP.
-- Updated for the new 1182x1330, 15-theme sheet.
-- Supports Exploration, Sci-Fi, Fantasy, Mystery, Romance, Slice of Life,
-  Action, Horror, Historical, Adventure, Comedy, Sports, Music,
-  Supernatural, and Mecha.
-- Uses ImageOps.fit rather than stretching crops.
-- Missing or invalid artwork can no longer crash the analyzer.
-- Extracted art is cached under .anilist_cache/artwork_pack.
+Artwork composition fix
+- Artwork is now composed directly into the exact final destination dimensions.
+- Poster, social, and quote assets each have a dedicated right-side illustration region.
+- A dark text-safe left region is baked into every extracted asset.
+- The original artwork aspect ratio is preserved inside its intended region.
+- CSS no longer crops or zooms the already composed images.
+- Cache key changed so older malformed crops are ignored automatically.
 
-Delete your existing assets folder before copying this version so stale files
-cannot interfere.
+This version was rendered and visually inspected before packaging.
