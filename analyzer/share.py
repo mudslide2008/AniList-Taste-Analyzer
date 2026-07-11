@@ -319,7 +319,9 @@ def _social_html(user, taste_glance, rows, score_format, overall, rec_groups):
         taste_glance,
     )
     hero = artwork.get("social", "")
-    hero_style = f"--hero-image:url('{_esc(hero)}');" if hero else ""
+    # Large PNG data URIs can exceed Chromium's inline-style parsing limit.
+    # Put the artwork in an actual <img> element instead of a CSS variable.
+    hero_image = f'<img class="hero-art" src="{_esc(hero)}" alt="">' if hero else ""
     theme_chips = "".join(f'<span>{_esc(theme)}</span>' for theme in themes)
     best = _best_recommendation(rec_groups)
     best_text = _esc(best.get("title") if best else "—")
@@ -327,13 +329,13 @@ def _social_html(user, taste_glance, rows, score_format, overall, rec_groups):
     return f'''<!doctype html><html><head><meta charset="utf-8"><style>
 :root{{--cyan:#55d9ee;--text:#f4f7fb;--muted:#a9b9cc;--hero-image:none}}*{{box-sizing:border-box}}html,body{{margin:0;width:1920px;height:1080px;background:#06111e;color:var(--text);font-family:"Segoe UI",Arial,sans-serif}}
 .card{{position:relative;width:1920px;height:1080px;overflow:hidden;border:3px solid var(--cyan);border-radius:30px;background:#06111e}}
-.card::before{{content:"";position:absolute;left:0;right:0;top:0;height:625px;background-image:var(--hero-image);background-size:100% 100%;background-position:center;background-repeat:no-repeat}}
-.card::after{{content:"";position:absolute;left:0;right:0;top:0;height:625px;background:linear-gradient(90deg,rgba(4,14,25,.99) 0%,rgba(4,14,25,.94) 36%,rgba(4,14,25,.45) 64%,rgba(4,14,25,.06) 88%),linear-gradient(180deg,transparent 62%,#06111e 100%);pointer-events:none}}
-.card>*{{position:relative;z-index:1}}
+.hero-art{{position:absolute;left:0;top:0;width:1920px;height:625px;object-fit:fill;z-index:0}}
+.card::after{{content:"";position:absolute;left:0;right:0;top:0;height:625px;z-index:1;background:linear-gradient(90deg,rgba(4,14,25,.99) 0%,rgba(4,14,25,.94) 36%,rgba(4,14,25,.45) 64%,rgba(4,14,25,.06) 88%),linear-gradient(180deg,transparent 62%,#06111e 100%);pointer-events:none}}
+.content,.metrics,.bottom{{z-index:2}}
 .content{{position:absolute;left:86px;top:62px;width:1130px}}h1{{margin:0;font-size:84px;line-height:.95;font-weight:900;letter-spacing:-3px}}.label{{margin-top:18px;color:var(--cyan);font-size:29px;font-weight:800;letter-spacing:3px;text-transform:uppercase}}h2{{margin:58px 0 0;font-size:52px;line-height:1.14;letter-spacing:-1.5px}}p{{margin:22px 0 0;width:930px;color:#d3deea;font-size:24px;line-height:1.5}}
 .metrics{{position:absolute;right:72px;top:64px;width:340px;padding:28px;border:1px solid rgba(85,217,238,.45);border-radius:22px;background:rgba(4,16,29,.9)}}.metric{{margin-bottom:22px}}.metric:last-child{{margin-bottom:0}}.metric b{{display:block;font-size:44px}}.metric span{{display:block;color:var(--muted);font-size:16px;text-transform:uppercase}}
 .bottom{{position:absolute;left:86px;right:86px;top:675px;bottom:58px;display:grid;grid-template-columns:1fr 470px;gap:30px;align-items:stretch;border-top:1px solid rgba(85,217,238,.35);padding-top:56px}}.chips{{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;position:relative}}.chips::before{{content:"STRONGEST SIGNALS";position:absolute;top:-40px;left:0;color:var(--cyan);font-size:20px;font-weight:800;letter-spacing:1px}}.chips span{{display:flex;align-items:center;justify-content:center;padding:18px 22px;border:1px solid #2c5e78;border-radius:18px;background:linear-gradient(145deg,rgba(16,44,69,.95),rgba(8,25,42,.95));font-weight:800;font-size:25px}}.best{{align-self:stretch;display:flex;flex-direction:column;justify-content:center;min-width:470px;padding:28px 30px;border:1px solid #2c5e78;border-radius:18px;background:linear-gradient(145deg,rgba(16,44,69,.95),rgba(8,25,42,.95))}}.best small{{display:block;color:var(--muted);font-size:17px;text-transform:uppercase}}.best strong{{display:block;margin-top:10px;font-size:34px}}
-</style></head><body style="{hero_style}"><div class="card"><div class="content"><h1>{_esc(user.get("name") or "AniList user")}</h1><div class="label">Anime Taste Report</div><h2>{_esc(taste_glance.get("headline") or "")}</h2><p>{_esc(taste_glance.get("summary") or "")}</p></div><div class="metrics"><div class="metric"><b>{len(rows)}</b><span>Rated anime</span></div><div class="metric"><b>{overall:.1f}/{int(score_format["max"])}</b><span>Average</span></div><div class="metric"><b>{_esc(top_rate)}</b><span>Top-rating rate</span></div></div><div class="bottom"><div class="chips">{theme_chips}</div><div class="best"><small>Best match</small><strong>{best_text}</strong></div></div></div></body></html>'''
+</style></head><body><div class="card">{hero_image}<div class="content"><h1>{_esc(user.get("name") or "AniList user")}</h1><div class="label">Anime Taste Report</div><h2>{_esc(taste_glance.get("headline") or "")}</h2><p>{_esc(taste_glance.get("summary") or "")}</p></div><div class="metrics"><div class="metric"><b>{len(rows)}</b><span>Rated anime</span></div><div class="metric"><b>{overall:.1f}/{int(score_format["max"])}</b><span>Average</span></div><div class="metric"><b>{_esc(top_rate)}</b><span>Top-rating rate</span></div></div><div class="bottom"><div class="chips">{theme_chips}</div><div class="best"><small>Best match</small><strong>{best_text}</strong></div></div></div></body></html>'''
 
 
 def _launch_browser(playwright):

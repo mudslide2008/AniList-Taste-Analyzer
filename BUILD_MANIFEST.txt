@@ -1,27 +1,21 @@
-Source: user-uploaded AniList Taste Analyzer v3.6.0
-Build: 3.6.1-clean
+Source: user-uploaded project containing the corrected taste cover
+Build: 3.6.2-share-card-fix
+
+Changed:
+- analyzer/share.py
+  - Share-card theme artwork now renders through an <img> element.
+  - Avoids Chromium dropping the 2.8 MB image data URI from an inline CSS variable.
+  - Existing gradient, text, metrics, signal cards, and dimensions are unchanged.
+- analyzer/__init__.py
+
+Preserved unchanged:
+- assets/themes/exploration/hero_cover.png
+- assets/themes/exploration/hero_social.png
+- assets/themes/exploration/quote_banner.png
+- taste-cover layout and renderer
+- analyzer/report/recommendation/VA/staff/export logic
 
 Removed from distributable:
 - .anilist_cache
 - __pycache__
-- anilist_report_JCes97
-- anilist_report_SerJohnY
-- anilist_report_mudslide2008
-- anilist_report_nxghTmare
-
-Changed:
-- analyzer/artwork_pack.py
-- analyzer/share.py (cover hero uses direct background rather than pseudo-element)
-- analyzer/__init__.py
-- analyzer/api.py
-- README.txt
-- assets/themes/exploration/hero_cover.png
-- assets/themes/exploration/hero_social.png
-- assets/themes/exploration/quote_banner.png
-
-Unchanged:
-- analysis logic
-- recommendation logic
-- voice actor/staff logic
-- report HTML
-- CSV/JSON exports
+- compiled Python files
