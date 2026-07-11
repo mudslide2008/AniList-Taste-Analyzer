@@ -166,7 +166,7 @@ def adjusted_top_rate(stat, overall_top_rate, prior_weight=8.0):
 
 
 
-VOICE_CACHE_VERSION = 4
+VOICE_CACHE_VERSION = 5
 VOICE_BATCH_SIZE = 10
 VOICE_MAX_CHARACTER_PAGES = 3
 
@@ -456,6 +456,16 @@ def voice_actor_stats(rows, language, overall, min_count, max_score):
             franchise_ratings,
         )
         stat.url = links.get(actor_id, "")
+        stat.image = next(
+            (
+                actor.get("image") or ""
+                for row in rows
+                for actor in (row.get("voice_actors") or {}).get(language, [])
+                if (actor.get("id") or actor.get("name")) == actor_id
+                and actor.get("image")
+            ),
+            "",
+        )
         stat.appearances = sorted(
             appearances,
             key=lambda item: (

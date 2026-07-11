@@ -153,12 +153,26 @@ def _best_recommendation(rec_groups):
     return ((rec_groups or {}).get("Best matches") or [None])[0]
 
 
-def _hero_art(rows, rec_groups, project_root):
+
+def _row_theme_overlap(row: dict, themes: list[str]) -> int:
+    row_terms = {
+        str(value).casefold()
+        for value in (row.get("tags") or []) + (row.get("genres") or [])
+    }
+    return sum(1 for theme in themes if theme.casefold() in row_terms)
+
+
+def _hero_art(rows, rec_groups, project_root, themes):
+    """Choose custom art first, then a thematically relevant favorite."""
     custom = next(
-        (p for p in [
-            project_root / "assets" / "cover_background.jpg",
-            project_root / "assets" / "cover_background.png",
-        ] if p.exists()),
+        (
+            path
+            for path in (
+                project_root / "assets" / "cover_background.jpg",
+                project_root / "assets" / "cover_background.png",
+            )
+            if path.exists()
+        ),
         None,
     )
     if custom:
@@ -167,16 +181,24 @@ def _hero_art(rows, rec_groups, project_root):
         except OSError:
             pass
 
-    top_rows = sorted(
-        rows,
+    candidates = [
+        row
+        for row in rows
+        if row.get("banner_image") or row.get("cover_image")
+    ]
+    candidates.sort(
         key=lambda row: (
+            _row_theme_overlap(row, themes),
             row.get("rating") or 0,
             bool(row.get("banner_image")),
-            row.get("popularity") or 0,
+            row.get("favourites") or 0,
         ),
         reverse=True,
     )
-    for row in top_rows:
+
+    # Do not let a zero-overlap blockbuster automatically dominate the cover.
+    relevant = [row for row in candidates if _row_theme_overlap(row, themes) > 0]
+    for row in (relevant or candidates):
         art = _download_image(row.get("banner_image") or row.get("cover_image") or "")
         if art:
             return art
@@ -187,24 +209,50 @@ def _hero_art(rows, rec_groups, project_root):
     return None
 
 
+def _initials(name: str) -> str:
+    parts = [part for part in name.replace("—", " ").split() if part]
+    if not parts:
+        return "?"
+    return "".join(part[0].upper() for part in parts[:2])
+
+
 def _draw_person_row(canvas, draw, x, y, width, stat, role=False):
+    diameter = 62
     avatar = _download_image(getattr(stat, "image", ""))
     if avatar:
-        canvas.alpha_composite(_circle_crop(avatar, 58), (x, y))
+        canvas.alpha_composite(_circle_crop(avatar, diameter), (x, y))
     else:
-        draw.ellipse((x, y, x+58, y+58), fill="#174864")
+        draw.ellipse((x, y, x + diameter, y + diameter), fill="#174864", outline=LINE, width=2)
+        initials = _initials(getattr(stat, "name", ""))
+        initials_font = _font(18, True)
+        tw, th = _measure(draw, initials, initials_font)
+        draw.text(
+            (x + (diameter - tw) / 2, y + (diameter - th) / 2 - 2),
+            initials,
+            font=initials_font,
+            fill=TEXT,
+        )
+
     name, subtitle = _creator_parts(stat.name) if role else (stat.name, "")
-    draw.text((x+76, y+2), name, font=_font(23, True), fill=TEXT)
+    name_font = _font(22, True)
+    name_h, _ = _text_height(draw, name, name_font, width - 82, 3, 2)
+    _draw_wrapped(draw, x + 80, y + 1, name, name_font, TEXT, width - 82, 3, 2)
+
+    used_height = max(diameter, name_h)
     if subtitle:
-        _draw_wrapped(draw, x+76, y+32, subtitle, _font(17), MUTED, width-80, spacing=4, max_lines=2)
-    return y + 76
+        subtitle_y = y + name_h + 7
+        subtitle_h, _ = _text_height(draw, subtitle, _font(16), width - 82, 3, 2)
+        _draw_wrapped(draw, x + 80, subtitle_y, subtitle, _font(16), MUTED, width - 82, 3, 2)
+        used_height = max(used_height, name_h + 7 + subtitle_h)
+
+    return y + used_height + 18
 
 
 def _draw_signal_card(draw, x, y, w, h, theme):
-    _panel(draw, (x, y, x+w, y+h), fill=PANEL_ALT, radius=20)
-    draw.ellipse((x+24, y+24, x+64, y+64), fill=CYAN)
-    draw.text((x+82, y+24), theme.upper(), font=_font(22, True), fill=CYAN)
-    desc = {
+    _panel(draw, (x, y, x + w, y + h), fill=PANEL_ALT, radius=20)
+    draw.ellipse((x + 22, y + 22, x + 60, y + 60), fill=CYAN)
+    draw.text((x + 76, y + 23), theme.upper(), font=_font(21, True), fill=CYAN)
+    descriptions = {
         "Travel": "Journeys, new places, and the excitement of the unknown.",
         "Historical": "Stories shaped by the past, legacy, and lived history.",
         "Survival": "Resourcefulness and perseverance against difficult odds.",
@@ -213,153 +261,339 @@ def _draw_signal_card(draw, x, y, w, h, theme):
         "Work": "People taking pride in a craft, profession, or shared goal.",
         "Coming of Age": "Growth through experience, failure, and changing relationships.",
         "Science": "Curiosity, experimentation, and understanding how things work.",
-    }.get(theme, "A recurring theme strongly connected to top-rated anime.")
-    _draw_wrapped(draw, x+24, y+84, desc, _font(18), TEXT, w-48, spacing=6, max_lines=5)
+        "Music": "Practice, performance, expression, and mastery.",
+        "Found Family": "Relationships built through trust rather than obligation.",
+    }
+    description = descriptions.get(
+        theme,
+        "A recurring theme strongly connected to top-rated anime.",
+    )
+    _draw_wrapped(
+        draw,
+        x + 22,
+        y + 78,
+        description,
+        _font(17),
+        TEXT,
+        w - 44,
+        spacing=5,
+        max_lines=5,
+    )
+
+
+def _people_panel_height(draw, stats, width, role):
+    height = 78
+    for stat in stats:
+        name, subtitle = _creator_parts(stat.name) if role else (stat.name, "")
+        name_h, _ = _text_height(draw, name, _font(22, True), width - 116, 3, 2)
+        row_h = max(62, name_h)
+        if subtitle:
+            subtitle_h, _ = _text_height(draw, subtitle, _font(16), width - 116, 3, 2)
+            row_h = max(row_h, name_h + 7 + subtitle_h)
+        height += row_h + 18
+    return height + 22
+
+
+def _highlights_panel_height(draw, best, width):
+    height = 150
+    if best:
+        title_h, _ = _text_height(draw, best.get("title") or "—", _font(28, True), width - 200, 6, 3)
+        reasons = best.get("matched_tags") or best.get("matched_genres") or []
+        reason_h = 0
+        if reasons:
+            reason_h, _ = _text_height(
+                draw,
+                "Why: " + ", ".join(reasons[:3]),
+                _font(17),
+                width - 200,
+                4,
+                4,
+            )
+        height = max(height, 250 + title_h + reason_h)
+    return height + 32
 
 
 def _draw_cover(user, taste_glance, stats, rows, score_format, overall, rec_groups, output_dir):
-    W, H = 1600, 2200
+    W, H = 1600, 2020
     image = _gradient((W, H)).convert("RGBA")
     draw = ImageDraw.Draw(image)
     project_root = Path(__file__).resolve().parent.parent
+    themes = [str(value) for value in (taste_glance.get("themes") or []) if value][:4]
 
-    draw.rounded_rectangle((28, 28, W-28, H-28), radius=28, outline=CYAN, width=3)
+    draw.rounded_rectangle((28, 28, W - 28, H - 28), radius=28, outline=CYAN, width=3)
 
-    art = _hero_art(rows, rec_groups, project_root)
-    hero = (54, 54, W-54, 720)
+    # Hero: image primarily on the right, readable dark area on the left.
+    hero = (54, 54, W - 54, 665)
+    art = _hero_art(rows, rec_groups, project_root, themes)
     if art:
-        art = _cover_crop(art, (hero[2]-hero[0], hero[3]-hero[1])).convert("RGBA")
-        art = ImageEnhance.Brightness(art).enhance(0.58)
+        art = _cover_crop(art, (hero[2] - hero[0], hero[3] - hero[1])).convert("RGBA")
+        art = ImageEnhance.Color(art).enhance(0.82)
+        art = ImageEnhance.Brightness(art).enhance(0.70)
         image.alpha_composite(art, (hero[0], hero[1]))
-        shade = Image.new("RGBA", (hero[2]-hero[0], hero[3]-hero[1]), (4, 12, 24, 0))
+
+        shade = Image.new("RGBA", (hero[2] - hero[0], hero[3] - hero[1]), (0, 0, 0, 0))
         shade_draw = ImageDraw.Draw(shade)
         for x in range(shade.width):
-            alpha = int(225 * max(0, 1 - x / (shade.width * 0.72)))
+            position = x / max(1, shade.width - 1)
+            alpha = int(245 * max(0.08, 1.0 - position / 0.72))
             shade_draw.line((x, 0, x, shade.height), fill=(4, 12, 24, alpha))
+        shade_draw.rectangle((0, shade.height - 90, shade.width, shade.height), fill=(4, 12, 24, 110))
         image.alpha_composite(shade, (hero[0], hero[1]))
     else:
         _panel(draw, hero, fill=PANEL, radius=24)
 
-    # Header and metrics.
-    draw.text((88, 88), str(user.get("name") or "AniList user"), font=_font(78, True), fill=TEXT)
-    draw.text((92, 176), "ANIME TASTE REPORT", font=_font(28, True), fill=CYAN)
+    # Header.
+    username = str(user.get("name") or "AniList user")
+    draw.text((88, 82), username, font=_font(70, True), fill=TEXT)
+    draw.text((92, 162), "ANIME TASTE REPORT", font=_font(27, True), fill=CYAN)
 
-    metric_box = (1220, 78, 1510, 322)
-    _panel(draw, metric_box, fill="#081526e8", radius=22)
-    draw.text((1260, 104), str(len(rows)), font=_font(46, True), fill=TEXT)
-    draw.text((1262, 158), "RATED ANIME", font=_font(16, True), fill=MUTED)
-    draw.text((1260, 198), f"{overall:.1f}/{int(score_format['max'])}", font=_font(40, True), fill=TEXT)
-    draw.text((1262, 246), "AVERAGE", font=_font(16, True), fill=MUTED)
+    metric_box = (1214, 76, 1510, 292)
+    _panel(draw, metric_box, fill="#081526ee", radius=22)
+    draw.text((1248, 98), str(len(rows)), font=_font(43, True), fill=TEXT)
+    draw.text((1250, 148), "RATED ANIME", font=_font(15, True), fill=MUTED)
+    draw.text((1248, 184), f"{overall:.1f}/{int(score_format['max'])}", font=_font(36, True), fill=TEXT)
+    draw.text((1250, 226), "AVERAGE", font=_font(15, True), fill=MUTED)
     top = _signal_value(taste_glance, "Top-rating rate")
     if top:
-        draw.text((1400, 198), top, font=_font(40, True), fill=TEXT)
-        draw.text((1402, 246), "TOP RATE", font=_font(16, True), fill=MUTED)
+        draw.text((1390, 184), top, font=_font(36, True), fill=TEXT)
+        draw.text((1392, 226), "TOP RATE", font=_font(15, True), fill=MUTED)
 
     headline = taste_glance.get("headline") or "A personal anime taste profile."
-    headline_font = _font(48, True)
-    headline_h, _ = _text_height(draw, headline, headline_font, 1000, 10, 3)
+    headline_font = _font(43, True)
+    headline_h, _ = _text_height(draw, headline, headline_font, 1020, 9, 3)
     summary = taste_glance.get("summary") or ""
-    summary_font = _font(24)
-    summary_h, _ = _text_height(draw, summary, summary_font, 960, 8, 5)
-    hero_text_y = 300
-    _draw_wrapped(draw, 88, hero_text_y, headline, headline_font, TEXT, 1000, 10, 3)
-    _draw_wrapped(draw, 88, hero_text_y+headline_h+24, summary, summary_font, TEXT, 960, 8, 5)
+    summary_font = _font(22)
+    summary_h, _ = _text_height(draw, summary, summary_font, 960, 7, 5)
+    text_y = 262
+    _draw_wrapped(draw, 88, text_y, headline, headline_font, TEXT, 1020, 9, 3)
+    _draw_wrapped(draw, 88, text_y + headline_h + 19, summary, summary_font, TEXT, 960, 7, 5)
 
-    # Signals.
-    signal_title_y = 760
-    draw.text((88, signal_title_y), "YOUR STRONGEST SIGNALS", font=_font(30, True), fill=CYAN)
-    themes = [str(t) for t in (taste_glance.get("themes") or []) if t][:4]
-    card_y, gap = 820, 18
-    card_w = (1424 - gap*3) // 4
-    for i, theme in enumerate(themes):
-        _draw_signal_card(draw, 88+i*(card_w+gap), card_y, card_w, 260, theme)
+    # Signal row.
+    draw.text((88, 706), "YOUR STRONGEST SIGNALS", font=_font(28, True), fill=CYAN)
+    card_y, gap = 754, 16
+    card_w = (1424 - gap * 3) // 4
+    for index, theme in enumerate(themes):
+        _draw_signal_card(draw, 88 + index * (card_w + gap), card_y, card_w, 230, theme)
 
-    # Lower columns.
-    lower_y, lower_h = 1120, 700
-    gap = 18
-    col_w = (1424-gap*2)//3
-    boxes = [(88+i*(col_w+gap), lower_y, 88+i*(col_w+gap)+col_w, lower_y+lower_h) for i in range(3)]
+    # Content-driven lower panels.
+    creators = _top_names(stats.get("staff") or [], 4)
+    voice_actors = _top_names(stats.get("japanese_vas") or [], 4)
+    best = _best_recommendation(rec_groups)
+
+    lower_y = 1024
+    gap = 16
+    col_w = (1424 - gap * 2) // 3
+    creator_h = _people_panel_height(draw, creators, col_w - 52, role=True)
+    va_h = _people_panel_height(draw, voice_actors, col_w - 52, role=False)
+    highlight_h = _highlights_panel_height(draw, best, col_w - 52)
+    lower_h = max(430, creator_h, va_h, highlight_h)
+
+    boxes = [
+        (88 + index * (col_w + gap), lower_y, 88 + index * (col_w + gap) + col_w, lower_y + lower_h)
+        for index in range(3)
+    ]
     for box in boxes:
         _panel(draw, box, fill=PANEL, radius=22)
 
     # Creators.
-    x1,y1,x2,y2 = boxes[0]
-    draw.text((x1+26,y1+24),"RECURRING CREATORS",font=_font(25,True),fill=CYAN)
-    y = y1+80
-    for stat in _top_names(stats.get("staff") or [],4):
-        y = _draw_person_row(image, draw, x1+26, y, col_w-52, stat, role=True)
+    x1, y1, x2, y2 = boxes[0]
+    draw.text((x1 + 24, y1 + 22), "RECURRING CREATORS", font=_font(23, True), fill=CYAN)
+    y = y1 + 70
+    for stat in creators:
+        y = _draw_person_row(image, draw, x1 + 24, y, col_w - 48, stat, role=True)
 
     # VAs.
-    x1,y1,x2,y2 = boxes[1]
-    draw.text((x1+26,y1+24),"RECURRING JAPANESE VAS",font=_font(24,True),fill=CYAN)
-    y = y1+80
-    for stat in _top_names(stats.get("japanese_vas") or [],4):
-        y = _draw_person_row(image, draw, x1+26, y, col_w-52, stat, role=False)
+    x1, y1, x2, y2 = boxes[1]
+    draw.text((x1 + 24, y1 + 22), "RECURRING JAPANESE VAS", font=_font(22, True), fill=CYAN)
+    y = y1 + 70
+    for stat in voice_actors:
+        y = _draw_person_row(image, draw, x1 + 24, y, col_w - 48, stat, role=False)
 
     # Highlights.
-    x1,y1,x2,y2 = boxes[2]
-    draw.text((x1+26,y1+24),"OTHER HIGHLIGHTS",font=_font(25,True),fill=CYAN)
-    alignment = _signal_value(taste_glance,"Community alignment") or "—"
-    draw.text((x1+26,y1+90),"COMMUNITY ALIGNMENT",font=_font(17,True),fill=MUTED)
-    _draw_wrapped(draw,x1+26,y1+122,alignment,_font(29,True),CYAN,col_w-52,6,2)
-    draw.line((x1+26,y1+205,x2-26,y1+205),fill=LINE,width=2)
+    x1, y1, x2, y2 = boxes[2]
+    draw.text((x1 + 24, y1 + 22), "OTHER HIGHLIGHTS", font=_font(23, True), fill=CYAN)
+    alignment = _signal_value(taste_glance, "Community alignment") or "—"
+    draw.text((x1 + 24, y1 + 78), "COMMUNITY ALIGNMENT", font=_font(16, True), fill=MUTED)
+    _draw_wrapped(draw, x1 + 24, y1 + 108, alignment, _font(27, True), CYAN, col_w - 48, 5, 2)
 
-    best = _best_recommendation(rec_groups)
+    divider_y = y1 + 174
+    draw.line((x1 + 24, divider_y, x2 - 24, divider_y), fill=LINE, width=2)
+
     if best:
-        draw.text((x1+26,y1+236),"BEST MATCH",font=_font(17,True),fill=MUTED)
-        cover = _download_image(best.get("cover_image") or "")
-        cover_w, cover_h = 118, 168
+        draw.text((x1 + 24, divider_y + 24), "BEST MATCH", font=_font(16, True), fill=MUTED)
+        cover = _download_image(best.get("cover_image") or best.get("banner_image") or "")
+        cover_w, cover_h = 128, 184
+        cover_y = divider_y + 62
         if cover:
-            image.alpha_composite(_cover_crop(cover,(cover_w,cover_h)).convert("RGBA"),(x1+26,y1+280))
-        text_x = x1+26+(cover_w+18 if cover else 0)
-        text_w = x2-26-text_x
-        rec_y = _draw_wrapped(draw,text_x,y1+280,best.get("title") or "—",_font(28,True),TEXT,text_w,6,3)
+            cover_image = _cover_crop(cover, (cover_w, cover_h)).convert("RGBA")
+            image.alpha_composite(cover_image, (x1 + 24, cover_y))
+            draw.rounded_rectangle(
+                (x1 + 24, cover_y, x1 + 24 + cover_w, cover_y + cover_h),
+                radius=12,
+                outline=LINE,
+                width=2,
+            )
+
+        text_x = x1 + 24 + (cover_w + 18 if cover else 0)
+        text_w = x2 - 24 - text_x
+        rec_y = _draw_wrapped(
+            draw,
+            text_x,
+            cover_y,
+            best.get("title") or "—",
+            _font(27, True),
+            TEXT,
+            text_w,
+            5,
+            3,
+        )
         reasons = best.get("matched_tags") or best.get("matched_genres") or []
         if reasons:
-            _draw_wrapped(draw,text_x,rec_y+10,"Why: "+", ".join(reasons[:3]),_font(18),MUTED,text_w,5,4)
+            _draw_wrapped(
+                draw,
+                text_x,
+                rec_y + 10,
+                "Why: " + ", ".join(reasons[:3]),
+                _font(17),
+                MUTED,
+                text_w,
+                4,
+                4,
+            )
 
-    # Closing.
-    quote_top = 1860
-    _panel(draw,(88,quote_top,1512,2072),fill=PANEL_ALT,radius=22)
-    draw.text((116,quote_top+26),"“",font=_font(74,True),fill=CYAN)
+    # Closing panel follows actual lower content instead of fixed dead space.
+    quote_top = lower_y + lower_h + 26
+    quote_bottom = quote_top + 154
+    _panel(draw, (88, quote_top, 1512, quote_bottom), fill=PANEL_ALT, radius=22)
+    draw.text((114, quote_top + 20), "“", font=_font(64, True), fill=CYAN)
     closing = (
         "The full report explains the evidence behind these patterns and keeps "
         "the detailed creators, voice actors, ratings, and recommendations interactive."
     )
-    _draw_wrapped(draw,190,quote_top+46,closing,_font(23),TEXT,1260,8,4)
-    draw.text((88,2124),"GENERATED BY ANILIST TASTE ANALYZER",font=_font(19,True),fill=CYAN)
+    _draw_wrapped(draw, 184, quote_top + 38, closing, _font(21), TEXT, 1260, 7, 3)
 
-    image.convert("RGB").save(output_dir/"taste_cover.png",quality=95)
+    footer_y = quote_bottom + 34
+    draw.text((88, footer_y), "GENERATED BY ANILIST TASTE ANALYZER", font=_font(18, True), fill=CYAN)
+
+    # Crop unused bottom area while keeping a comfortable margin.
+    final_height = min(H, footer_y + 74)
+    image = image.crop((0, 0, W, final_height))
+    image.convert("RGB").save(output_dir / "taste_cover.png", quality=95)
 
 
-def _draw_social_card(user,taste_glance,rows,score_format,overall,output_dir):
-    W,H=1920,1080
-    image=_gradient((W,H)).convert("RGBA")
-    draw=ImageDraw.Draw(image)
-    draw.rounded_rectangle((34,34,W-34,H-34),radius=28,outline=CYAN,width=3)
-    draw.text((92,78),str(user.get("name") or "AniList user"),font=_font(84,True),fill=TEXT)
-    draw.text((96,174),"ANIME TASTE REPORT",font=_font(30,True),fill=CYAN)
-    _draw_wrapped(draw,96,286,taste_glance.get("headline") or "",_font(56,True),TEXT,1420,14,3)
-    _draw_wrapped(draw,96,566,taste_glance.get("summary") or "",_font(27),MUTED,1450,10,4)
-    _panel(draw,(1500,74,1828,378),fill=PANEL,radius=22)
-    draw.text((1536,100),str(len(rows)),font=_font(46,True),fill=TEXT)
-    draw.text((1538,154),"RATED ANIME",font=_font(16,True),fill=MUTED)
-    draw.text((1536,204),f"{overall:.1f}/{int(score_format['max'])}",font=_font(40,True),fill=TEXT)
-    draw.text((1538,250),"AVERAGE",font=_font(16,True),fill=MUTED)
-    top=_signal_value(taste_glance,"Top-rating rate")
+def _draw_social_card(user, taste_glance, rows, score_format, overall, output_dir, rec_groups=None):
+    W, H = 1920, 1080
+    image = _gradient((W, H)).convert("RGBA")
+    draw = ImageDraw.Draw(image)
+    project_root = Path(__file__).resolve().parent.parent
+    themes = [str(value) for value in (taste_glance.get("themes") or []) if value][:4]
+
+    draw.rounded_rectangle((34, 34, W - 34, H - 34), radius=28, outline=CYAN, width=3)
+
+    # Use the same thematically selected artwork, positioned on the right.
+    art = _hero_art(rows, rec_groups, project_root, themes)
+    if art:
+        art_box = (960, 34, W - 34, H - 34)
+        art = _cover_crop(art, (art_box[2] - art_box[0], art_box[3] - art_box[1])).convert("RGBA")
+        art = ImageEnhance.Brightness(art).enhance(0.72)
+        image.alpha_composite(art, (art_box[0], art_box[1]))
+
+        shade = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        shade_draw = ImageDraw.Draw(shade)
+        for x in range(W):
+            if x < 1220:
+                alpha = int(242 * max(0, 1 - x / 1220))
+            else:
+                alpha = 20
+            shade_draw.line((x, 0, x, H), fill=(4, 12, 24, alpha))
+        image.alpha_composite(shade)
+
+    draw = ImageDraw.Draw(image)
+    draw.text((92, 72), str(user.get("name") or "AniList user"), font=_font(78, True), fill=TEXT)
+    draw.text((96, 160), "ANIME TASTE REPORT", font=_font(28, True), fill=CYAN)
+
+    headline = taste_glance.get("headline") or ""
+    headline_h, _ = _text_height(draw, headline, _font(49, True), 1080, 11, 3)
+    _draw_wrapped(draw, 96, 270, headline, _font(49, True), TEXT, 1080, 11, 3)
+
+    summary_y = 270 + headline_h + 24
+    _draw_wrapped(
+        draw,
+        96,
+        summary_y,
+        taste_glance.get("summary") or "",
+        _font(24),
+        MUTED,
+        1000,
+        8,
+        4,
+    )
+
+    metric_box = (1490, 72, 1818, 360)
+    _panel(draw, metric_box, fill="#081526ee", radius=22)
+    draw.text((1528, 98), str(len(rows)), font=_font(44, True), fill=TEXT)
+    draw.text((1530, 148), "RATED ANIME", font=_font(15, True), fill=MUTED)
+    draw.text((1528, 194), f"{overall:.1f}/{int(score_format['max'])}", font=_font(38, True), fill=TEXT)
+    draw.text((1530, 238), "AVERAGE", font=_font(15, True), fill=MUTED)
+    top = _signal_value(taste_glance, "Top-rating rate")
     if top:
-        draw.text((1536,296),top,font=_font(40,True),fill=TEXT)
-        draw.text((1538,342),"TOP RATE",font=_font(16,True),fill=MUTED)
-    draw.text((96,980),"GENERATED BY ANILIST TASTE ANALYZER",font=_font(19,True),fill=CYAN)
-    image.convert("RGB").save(output_dir/"share_card.png",quality=95)
+        draw.text((1528, 280), top, font=_font(38, True), fill=TEXT)
+        draw.text((1530, 324), "TOP RATE", font=_font(15, True), fill=MUTED)
+
+    # Fill the previous empty lower area with themes and a recommendation.
+    draw.text((96, 760), "STRONGEST SIGNALS", font=_font(25, True), fill=CYAN)
+    chip_x = 96
+    for theme in themes:
+        label_font = _font(21, True)
+        label_w, _ = _measure(draw, theme.upper(), label_font)
+        chip_w = label_w + 46
+        draw.rounded_rectangle((chip_x, 808, chip_x + chip_w, 866), radius=16, fill=PANEL_ALT, outline=LINE)
+        draw.text((chip_x + 23, 823), theme.upper(), font=label_font, fill=TEXT)
+        chip_x += chip_w + 14
+
+    best = _best_recommendation(rec_groups)
+    if best:
+        _panel(draw, (96, 898, 890, 1006), fill=PANEL, radius=18)
+        draw.text((120, 918), "BEST MATCH", font=_font(16, True), fill=MUTED)
+        _draw_wrapped(
+            draw,
+            120,
+            948,
+            best.get("title") or "—",
+            _font(27, True),
+            TEXT,
+            720,
+            4,
+            2,
+        )
+
+    draw.text((96, 1020), "GENERATED BY ANILIST TASTE ANALYZER", font=_font(17, True), fill=CYAN)
+    image.convert("RGB").save(output_dir / "share_card.png", quality=95)
 
 
-def write_share_assets(user,taste_glance,stats,rows,score_format,overall,output_dir,rec_groups=None):
-    _draw_social_card(user,taste_glance,rows,score_format,overall,output_dir)
-    _draw_cover(user,taste_glance,stats,rows,score_format,overall,rec_groups,output_dir)
+def write_share_assets(user, taste_glance, stats, rows, score_format, overall, output_dir, rec_groups=None):
+    _draw_social_card(
+        user,
+        taste_glance,
+        rows,
+        score_format,
+        overall,
+        output_dir,
+        rec_groups,
+    )
+    _draw_cover(
+        user,
+        taste_glance,
+        stats,
+        rows,
+        score_format,
+        overall,
+        rec_groups,
+        output_dir,
+    )
 
-    best=_best_recommendation(rec_groups)
-    summary=[
+    best = _best_recommendation(rec_groups)
+    summary = [
         f"{user.get('name') or 'AniList user'}'s Anime Taste Report",
         "",
         taste_glance.get("headline") or "",
@@ -368,8 +602,11 @@ def write_share_assets(user,taste_glance,stats,rows,score_format,overall,output_
         f"{len(rows)} rated anime | Average: {overall:.1f}/{int(score_format['max'])}",
     ]
     if taste_glance.get("themes"):
-        summary.extend(["","Strongest signals: "+", ".join(taste_glance["themes"][:4])])
+        summary.extend(["", "Strongest signals: " + ", ".join(taste_glance["themes"][:4])])
     if best:
-        summary.extend(["","Best recommendation match: "+str(best.get("title") or "—")])
-    summary.extend(["","A full interactive report and shareable PNG cover were generated alongside this summary."])
-    (output_dir/"share_summary.txt").write_text("\n".join(summary),encoding="utf-8")
+        summary.extend(["", "Best recommendation match: " + str(best.get("title") or "—")])
+    summary.extend([
+        "",
+        "A full interactive report and shareable PNG cover were generated alongside this summary.",
+    ])
+    (output_dir / "share_summary.txt").write_text("\n".join(summary), encoding="utf-8")
