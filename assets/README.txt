@@ -1,6 +1,11 @@
-This folder must contain:
+Theme art library
 
-artwork_asset_pack.png
+Installed theme:
+  assets/themes/exploration/
 
-Version 3.4.1 expects the included 1182x1330, 15-theme sheet.
-Do not rename it.
+Files are used directly at their final dimensions:
+  hero_cover.png   1536x500
+  hero_social.png  1920x625
+  quote_banner.png 920x300
+
+There is no contact sheet, crop extraction, random banner selection, or ImageOps.fit.

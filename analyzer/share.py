@@ -212,9 +212,22 @@ POSTER_CSS = r'''
 html,body { margin:0; width:1600px; background:linear-gradient(180deg,#081a2d,#040b15); color:var(--text); font-family:"Segoe UI",Arial,sans-serif; }
 body { padding:20px; }
 .poster { border:2px solid var(--cyan); border-radius:28px; overflow:hidden; background:#06111e; }
-.hero { position:relative; min-height:500px; padding:38px 58px 34px; overflow:hidden; background:#061321; }
-.hero::before { content:""; position:absolute; inset:0; background-image:var(--hero-image); background-size:100% 100%; background-position:center; background-repeat:no-repeat; }
-.hero::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,rgba(4,14,25,.99) 0%,rgba(4,14,25,.96) 34%,rgba(4,14,25,.68) 56%,rgba(4,14,25,.08) 84%),linear-gradient(180deg,transparent 62%,#06111e 100%); border-bottom:2px solid rgba(85,217,238,.48); }
+.hero {
+  position:relative;
+  min-height:500px;
+  padding:38px 58px 34px;
+  overflow:hidden;
+  background-color:#061321;
+  background-image:
+    linear-gradient(90deg,rgba(4,14,25,.99) 0%,rgba(4,14,25,.94) 34%,rgba(4,14,25,.52) 58%,rgba(4,14,25,.04) 84%),
+    linear-gradient(180deg,transparent 62%,#06111e 100%),
+    var(--hero-image);
+  background-size:100% 100%,100% 100%,100% 100%;
+  background-position:center;
+  background-repeat:no-repeat;
+  border-bottom:2px solid rgba(85,217,238,.48);
+}
+.hero::before,.hero::after { content:none; }
 .hero > * { position:relative; z-index:1; }
 .header-row { display:grid; grid-template-columns:minmax(0,1fr) 330px; gap:36px; }
 .username { margin:0; font-size:72px; line-height:.95; font-weight:900; letter-spacing:-2px; }

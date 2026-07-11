@@ -1,11 +1,14 @@
-AniList Taste Analyzer 3.6
+AniList Taste Analyzer 3.6.1
 
-Artwork composition fix
-- Artwork is now composed directly into the exact final destination dimensions.
-- Poster, social, and quote assets each have a dedicated right-side illustration region.
-- A dark text-safe left region is baked into every extracted asset.
-- The original artwork aspect ratio is preserved inside its intended region.
-- CSS no longer crops or zooms the already composed images.
-- Cache key changed so older malformed crops are ignored automatically.
+Clean source build based directly on the uploaded v3.6 project.
 
-This version was rendered and visually inspected before packaging.
+Changes are limited to the share-art system:
+- Removed the contact-sheet crop pipeline.
+- Removed generated reports and cache folders from the distributable.
+- Added direct Exploration assets at their exact final dimensions.
+- Existing report layout, portraits, recommendation art, analysis, and exports are unchanged.
+
+Artwork:
+  assets/themes/exploration/hero_cover.png
+  assets/themes/exploration/hero_social.png
+  assets/themes/exploration/quote_banner.png
