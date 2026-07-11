@@ -360,6 +360,33 @@ def voice_actor_tables(japanese_stats, english_stats, overall, score_format):
         + voice_actor_section("English voice actors",english_stats,score_format,collapsible=True)
     )
 
+
+def rating_behavior_section(distribution_html, positive, negative, top_rows, low_rows, score_format):
+    return (
+        "<details id='rating-behavior' class='major-details'><summary>Rating behavior and community comparisons</summary>"
+        "<section><h2>Rating distribution</h2>"
+        f"{distribution_html}</section>"
+        f"{community_consensus_section(positive,negative,score_format)}"
+        "<details><summary>Most popular top-rated picks</summary>"
+        f"{show_table('Most popular top-rated picks',top_rows,score_format,20)}</details>"
+        "<details><summary>Lowest-rated completed picks</summary>"
+        f"{show_table('Lowest-rated completed picks',low_rows,score_format,20)}</details>"
+        "</details>"
+    )
+
+
+def section_navigation():
+    return (
+        "<nav class='section-nav' aria-label='Report sections'>"
+        "<a href='#taste'>Taste</a>"
+        "<a href='#recommendations'>Recommendations</a>"
+        "<a href='#patterns'>Patterns</a>"
+        "<a href='#people'>Creators and VAs</a>"
+        "<a href='#rating-behavior'>Rating behavior</a>"
+        "<a href='#details'>More detail</a>"
+        "</nav>"
+    )
+
 def build_html(user, rows, all_entries, output, score_format, overall, stats, identity, taste_glance, recommendation_groups, include_staff):
     ratings=[float(r["rating"]) for r in rows if r.get("rating") is not None]
     max_score=score_format["max"]
@@ -390,14 +417,18 @@ def build_html(user, rows, all_entries, output, score_format, overall, stats, id
         for label,value in taste_glance.get("signals",[])
     )
     glance_html=(
-        "<section class='taste-glance'><div class='eyebrow'>Taste at a glance</div>"
+        "<section id='taste' class='taste-glance'><div class='eyebrow'>Taste at a glance</div>"
         f"<h2>{esc(taste_glance.get('headline',''))}</h2>"
         f"<p>{esc(taste_glance.get('summary',''))}</p>"
         f"<div class='glance-signals'>{glance_signals}</div></section>"
     )
     confidence=confidence_label(len(ratings))
-    primary=group_table("Genres",stats["genres"],overall,score_format,20,True,False,"Ranked by adjusted top-rating rate.")
-    primary+=tag_sections(stats["all_tags"],overall,score_format)
+    primary=(
+        "<div id='patterns'>"
+        + group_table("Genres",stats["genres"],overall,score_format,20,True,False,"Ranked by adjusted top-rating rate.")
+        + tag_sections(stats["all_tags"],overall,score_format)
+        + "</div>"
+    )
     people = ""
     if include_staff:
         people += people_table(
@@ -413,6 +444,7 @@ def build_html(user, rows, all_entries, output, score_format, overall, stats, id
             overall,
             score_format,
         )
+        people = "<div id='people'>" + people + "</div>"
 
     secondary=group_table("Studios",stats["studios"],overall,score_format,20,False,True)
     secondary+=group_table("Source material",stats["sources"],overall,score_format,20,False,True)
@@ -429,7 +461,7 @@ def build_html(user, rows, all_entries, output, score_format, overall, stats, id
 :root{{--bg:#0c111b;--panel:#151c29;--panel2:#1b2534;--text:#edf2f7;--muted:#9eacc0;--accent:#62d6e8;--line:#2b394c;--good:#70d49b;--bad:#ff8e8e}}
 *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}}a{{color:var(--accent);text-decoration:none}}a:hover{{text-decoration:underline}}main{{max-width:1180px;margin:auto;padding:34px 20px 80px}}
 .hero{{padding:28px;background:linear-gradient(135deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:18px}}h1{{margin:0 0 6px;font-size:clamp(28px,5vw,48px)}}h2{{margin:0 0 8px;font-size:24px}}h3{{margin:20px 0 8px;font-size:18px}}.muted,.hint{{color:var(--muted)}}.confidence{{font-size:12px;color:var(--muted);margin-top:4px}}
-.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:18px 0 0}}.card{{background:rgba(0,0,0,.18);border:1px solid var(--line);border-radius:12px;padding:14px}}.card span{{display:block;color:var(--muted)}}.card strong{{font-size:25px}}
+.section-nav{{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0}}.section-nav a{{display:inline-block;padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:12px}}.major-details>summary{{font-size:21px;background:linear-gradient(135deg,var(--panel2),var(--panel))}}.major-details>section{{margin-top:0}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:18px 0 0}}.card{{background:rgba(0,0,0,.18);border:1px solid var(--line);border-radius:12px;padding:14px}}.card span{{display:block;color:var(--muted)}}.card strong{{font-size:25px}}
 section{{margin-top:28px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px}}.rec-block{{margin-top:16px;background:var(--panel2)}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:18px}}.grid section{{margin-top:28px}}
 .table-wrap{{overflow:auto}}table{{width:100%;border-collapse:collapse;min-width:680px}}th,td{{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left}}.consensus-details{{margin-top:28px}}.consensus-stack{{display:grid;gap:18px;padding-top:14px}}.consensus-panel{{margin-top:0}}.consensus-table{{width:100%;min-width:0;table-layout:fixed}}.consensus-table th:first-child,.consensus-table td:first-child{{width:46%}}.consensus-table th:not(:first-child),.consensus-table td:not(:first-child){{width:18%;text-align:center}}.consensus-title{{overflow-wrap:anywhere;word-break:normal}}th{{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}}.positive{{color:var(--good)}}.negative{{color:var(--bad)}}.neutral{{color:var(--muted)}}
 .dist-row{{display:grid;grid-template-columns:90px 1fr 40px;gap:10px;align-items:center;margin:10px 0}}.bar{{height:12px;background:#263346;border-radius:999px;overflow:hidden}}.bar i{{display:block;height:100%;background:var(--accent);border-radius:inherit}}
@@ -437,14 +469,13 @@ details{{margin-top:22px}}summary{{cursor:pointer;font-size:20px;font-weight:700
 .va-grid{{display:grid;gap:14px}}.va-card{{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:16px}}.va-card-head{{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}}.va-card h3{{margin:0;font-size:20px}}.va-score{{text-align:right;white-space:nowrap}}.va-score strong,.va-score span{{display:block}}.va-score span,.season-count{{color:var(--muted);font-size:12px}}.va-role-section{{margin-top:14px}}.va-role-section h4{{margin:0 0 7px;font-size:15px}}.va-role-section h4 span{{color:var(--muted);font-weight:400}}.va-role-section>summary{{font-size:14px;padding:8px 10px;background:rgba(0,0,0,.14)}}.va-role-list{{margin:7px 0 0;padding-left:20px}}.va-role-list li{{margin:5px 0}}.va-characters{{font-weight:600}}.va-anime{{color:var(--muted)}}.va-more{{margin:8px 0 0 20px}}.va-more>summary{{display:inline-block;font-size:12px;padding:5px 9px;background:rgba(0,0,0,.16)}}.va-other{{margin-top:18px}}.va-other>summary{{font-size:17px;background:var(--panel2)}}.va-grid-compact{{margin-top:12px}}.va-card-details{{margin-top:10px}}.va-card-details>summary{{font-size:13px;padding:7px 10px;background:rgba(0,0,0,.14)}}.taste-glance{{background:linear-gradient(135deg,var(--panel2),var(--panel));border-color:rgba(98,214,232,.35)}}.taste-glance .eyebrow{{color:var(--accent);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em}}.taste-glance h2{{font-size:clamp(22px,4vw,34px);max-width:900px;margin-top:7px}}.taste-glance>p{{max-width:850px;font-size:16px}}.glance-signals{{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}}.glance-signal{{background:rgba(0,0,0,.18);border:1px solid var(--line);border-radius:10px;padding:9px 12px}}.glance-signal span,.glance-signal strong{{display:block}}.glance-signal span{{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}}footer{{margin-top:36px;color:var(--muted);font-size:13px}}@media(max-width:650px){{main{{padding:16px 10px 50px}}section,.hero{{padding:15px}}.consensus-table th,.consensus-table td{{padding:8px 5px;font-size:12px}}.consensus-table th:first-child,.consensus-table td:first-child{{width:40%}}.consensus-table th:not(:first-child),.consensus-table td:not(:first-child){{width:20%}}}}
 </style></head><body><main>
 <div class='hero'><div class='muted'>Unofficial AniList taste analysis</div><h1>{esc(user['name'])}</h1><div><a href='{esc(user.get('siteUrl',''))}'>Open AniList profile</a> · Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</div>
-<div class='cards'><div class='card'><span>Rated anime</span><strong>{len(ratings)}</strong></div><div class='card'><span>Scoring system</span><strong>{esc(score_format['label'])}</strong></div><div class='card'><span>Average</span><strong>{display_score(overall,score_format)}</strong></div><div class='card'><span>Top ratings</span><strong>{top_count}</strong></div><div class='card'><span>Top-rating rate</span><strong>{top_count/len(ratings):.0%}</strong></div></div></div>
+<div class='cards'><div class='card'><span>Rated anime</span><strong>{len(ratings)}</strong></div><div class='card'><span>Scoring system</span><strong>{esc(score_format['label'])}</strong></div><div class='card'><span>Average</span><strong>{display_score(overall,score_format)}</strong></div><div class='card'><span>Top ratings</span><strong>{top_count}</strong></div><div class='card'><span>Top-rating rate</span><strong>{top_count/len(ratings):.0%}</strong></div></div>{section_navigation()}</div>
 {glance_html}
 <details class='taste-details'><summary>Detailed taste profile</summary><section><h2>Detailed taste profile</h2><div class='confidence'>Confidence: {confidence} · based on {len(ratings)} rated anime</div>{profile_html}</section></details>
 {recommendations_section(recommendation_groups,score_format)}
-<section><h2>Rating distribution</h2>{''.join(dist)}</section>
-{community_consensus_section(positive,negative,score_format)}
-{primary}{people}{show_table('Most popular top-rated picks',top_rows,score_format,20)}{show_table('Lowest-rated completed picks',low_rows,score_format,20)}
-<h2 style='margin-top:34px'>More detail</h2>{secondary}
+{primary}{people}
+{rating_behavior_section(''.join(dist),positive,negative,top_rows,low_rows,score_format)}
+<h2 id='details' style='margin-top:34px'>More detail</h2>{secondary}
 <details><summary>All analyzed anime ({len(rows)})</summary><section><div class='table-wrap'><table><thead><tr><th>Anime</th><th>Rating</th><th>List status</th><th>Format</th><th>Year</th><th>Genres</th></tr></thead><tbody>{''.join(all_rows)}</tbody></table></div></section></details>
 <footer>Uses publicly available data from AniList's GraphQL API. Recommendations are heuristic, not guarantees. Correlation is not causation.</footer>
 </main></body></html>"""

@@ -137,6 +137,7 @@ def build_taste_at_glance(rows, genres, tags, overall, max_score):
             headline=f"A taste built around {primary[1]}."
         matched=sorted(primary[2],key=lambda tag:(tag.top_rate-overall_top,tag.count),reverse=True)
         examples=", ".join(tag.name for tag in matched[:3])
+        themes=[tag.name for tag in matched[:4]]
         summary=(
             f"The strongest recurring signals are {examples}. Broad genre labels matter, "
             "but specific themes and the way a story uses them are more predictive of a top rating."
@@ -148,6 +149,7 @@ def build_taste_at_glance(rows, genres, tags, overall, max_score):
             headline=f"Broad taste, with {eligible[0].name} as the most reliable anchor."
         else:
             headline="Broad taste driven more by execution than by genre."
+        themes=[genre.name for genre in eligible[:4]] if eligible else []
         summary=(
             "No single theme dominates strongly enough to define the list. Ratings appear to depend "
             "more on individual execution, momentum, and character investment than on category alone."
@@ -167,6 +169,7 @@ def build_taste_at_glance(rows, genres, tags, overall, max_score):
     return {
         "headline": headline,
         "summary": summary,
+        "themes": themes,
         "signals": [
             ("Top-rating rate", f"{overall_top:.0%}"),
             ("Community alignment", alignment),
