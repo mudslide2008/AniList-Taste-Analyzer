@@ -1,18 +1,11 @@
-AniList Taste Analyzer 2.3
+AniList Taste Analyzer 2.3.1
 
-New share outputs
-- share_card.png: a Discord-friendly image generated with no extra packages.
-- share_summary.txt: a short paste-ready description of the report.
-- The full interactive anime_taste_report.html is still generated normally.
+Share output fixes
+- Share-card text now wraps safely and uses dynamic vertical spacing.
+- Long headlines are capped at two lines.
+- Theme, creator, and voice sections are capped and truncated safely.
+- Text can no longer overlap or run off the image.
+- share_summary.txt no longer lists anime_taste_report.html as though it were a clickable download.
+- The summary now simply notes that the full interactive report was generated alongside it.
 
-Report polish
-- Added compact navigation links near the top.
-- Taste at a Glance remains the primary summary.
-- Recommendations and predictive patterns stay prominent.
-- Rating distribution, community comparisons, popular favorites, and lowest-rated
-  entries are grouped into one expandable Rating Behavior section.
-- Creative staff remains visible.
-- Japanese and English VA sections remain collapsed by default.
-- Secondary metadata remains under More Detail.
-
-No additional Python packages are required.
+No cache rebuild is required.
