@@ -71,6 +71,13 @@ def fetch_recommendations(rated_rows, all_entries, max_score, tag_stats, genre_s
                 ],
                 "community": rec.get("meanScore") or rec.get("averageScore"),
                 "popularity": rec.get("popularity") or 0,
+                "banner_image": rec.get("bannerImage") or "",
+                "cover_image": (
+                    (rec.get("coverImage") or {}).get("extraLarge")
+                    or (rec.get("coverImage") or {}).get("large")
+                    or ""
+                ),
+                "cover_color": (rec.get("coverImage") or {}).get("color") or "",
                 "votes": 0,
                 "sources": 0,
                 "seed_evidence": [],

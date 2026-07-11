@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import html
+import mimetypes
 import os
 import shutil
+import urllib.request
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -53,6 +56,51 @@ def _file_data_uri(path: Path) -> str:
     }.get(path.suffix.lower(), "application/octet-stream")
     payload = base64.b64encode(path.read_bytes()).decode("ascii")
     return f"data:{mime};base64,{payload}"
+
+
+def _remote_data_uri(url: str, project_root: Path) -> str:
+    if not url:
+        return ""
+    if url.startswith("data:"):
+        return url
+
+    cache_dir = project_root / ".anilist_cache" / "share_images"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()
+    cached = next(cache_dir.glob(f"{digest}.*"), None)
+
+    if cached and cached.exists():
+        return _file_data_uri(cached)
+
+    try:
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": "AniList-Taste-Analyzer/3.2"},
+        )
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = response.read()
+            content_type = (response.headers.get_content_type() or "image/jpeg").lower()
+
+        extension = mimetypes.guess_extension(content_type) or ".jpg"
+        if extension == ".jpe":
+            extension = ".jpg"
+
+        cached = cache_dir / f"{digest}{extension}"
+        cached.write_bytes(payload)
+        return _file_data_uri(cached)
+    except Exception:
+        return ""
+
+
+def _embedded_image_uri(value: str, project_root: Path) -> str:
+    if not value:
+        return ""
+    if value.startswith("data:"):
+        return value
+    path = Path(value)
+    if path.exists():
+        return _file_data_uri(path)
+    return _remote_data_uri(value, project_root)
 
 
 def _hero_asset_uri(project_root: Path) -> str:
@@ -149,9 +197,9 @@ def _theme_icon(name: str) -> str:
     return f'<svg viewBox="0 0 24 24" aria-hidden="true">{path}</svg>'
 
 
-def _person_card(stat: Any, creator: bool = False) -> str:
+def _person_card(stat: Any, project_root: Path, creator: bool = False) -> str:
     name, subtitle = _creator_parts(stat.name) if creator else (stat.name, "")
-    image = getattr(stat, "image", "") or ""
+    image = _embedded_image_uri(getattr(stat, "image", "") or "", project_root)
     if image:
         avatar = f'<img src="{_esc(image)}" alt="">'
     else:
@@ -167,10 +215,13 @@ def _person_card(stat: Any, creator: bool = False) -> str:
     )
 
 
-def _recommendation_card(best: dict | None) -> str:
+def _recommendation_card(best: dict | None, project_root: Path) -> str:
     if not best:
         return '<div class="empty-state">No recommendation data available.</div>'
-    cover = best.get("cover_image") or best.get("banner_image") or ""
+    cover = _embedded_image_uri(
+        best.get("cover_image") or best.get("banner_image") or "",
+        project_root,
+    )
     image = f'<img class="rec-cover" src="{_esc(cover)}" alt="">' if cover else '<div class="rec-cover placeholder"></div>'
     reasons = best.get("matched_tags") or best.get("matched_genres") or best.get("reasons") or []
     reason = ", ".join(str(item) for item in reasons[:3])
@@ -197,8 +248,34 @@ html,body {
 }
 body { padding:20px; }
 .poster { min-height:2160px; border:2px solid var(--cyan); border-radius:28px; overflow:hidden; background:rgba(3,12,22,.68); box-shadow:0 25px 80px rgba(0,0,0,.45),inset 0 0 50px rgba(37,198,226,.05); }
-.hero { position:relative; min-height:690px; padding:54px 58px 46px; background-image:linear-gradient(90deg,rgba(3,11,21,.99) 0%,rgba(3,11,21,.93) 38%,rgba(3,11,21,.3) 70%,rgba(3,11,21,.16) 100%),linear-gradient(180deg,rgba(3,11,21,.06) 58%,rgba(3,11,21,.96) 100%),var(--hero-image); background-size:cover; background-position:center; background-repeat:no-repeat; }
-.hero::after { content:""; position:absolute; left:58px; right:58px; bottom:0; height:2px; background:linear-gradient(90deg,var(--cyan),rgba(85,217,238,.08)); }
+.hero {
+  position:relative;
+  min-height:690px;
+  padding:54px 58px 46px;
+  overflow:hidden;
+  background:linear-gradient(135deg,#061321 0%,#071827 58%,#07111d 100%);
+}
+.hero::before {
+  content:"";
+  position:absolute;
+  inset:0 0 0 43%;
+  background-image:var(--hero-image);
+  background-size:cover;
+  background-position:center 68%;
+  background-repeat:no-repeat;
+  opacity:.94;
+}
+.hero::after {
+  content:"";
+  position:absolute;
+  inset:0;
+  background:
+    linear-gradient(90deg,#061321 0%,rgba(6,19,33,.98) 31%,rgba(6,19,33,.78) 52%,rgba(6,19,33,.15) 82%),
+    linear-gradient(180deg,transparent 66%,#06111e 100%);
+  border-bottom:2px solid rgba(85,217,238,.5);
+  pointer-events:none;
+}
+.hero > * { position:relative; z-index:1; }
 .header-row { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:42px; align-items:start; }
 .username { margin:0; font-size:86px; line-height:.95; font-weight:900; letter-spacing:-3px; text-shadow:0 4px 30px rgba(0,0,0,.6); }
 .report-label { display:flex; align-items:center; gap:18px; margin-top:18px; color:var(--cyan); font-weight:800; font-size:26px; letter-spacing:3px; text-transform:uppercase; }
@@ -254,11 +331,13 @@ body { padding:20px; }
   border:1px solid var(--line);
   border-radius:20px;
   overflow:hidden;
-  background:
-    linear-gradient(90deg,rgba(8,33,52,.99) 0%,rgba(8,28,47,.94) 48%,rgba(8,23,39,.28) 78%,rgba(8,23,39,.12) 100%),
+  background-color:#0a2034;
+  background-image:
+    linear-gradient(90deg,rgba(8,33,52,1) 0%,rgba(8,28,47,.98) 46%,rgba(8,23,39,.35) 72%,rgba(8,23,39,.08) 100%),
     var(--quote-image);
-  background-size:cover;
-  background-position:center right;
+  background-size:100% 100%, 46% auto;
+  background-position:center, right center;
+  background-repeat:no-repeat;
 }
 .quote-mark { color:var(--cyan); font-size:74px; line-height:.8; font-weight:900; }
 .quote p { margin:4px 0 0; font-size:20px; line-height:1.5; color:#e4ebf3; }
@@ -271,13 +350,22 @@ body { padding:20px; }
 def _poster_html(user, taste_glance, stats, rows, score_format, overall, rec_groups):
     project_root = Path(__file__).resolve().parent.parent
     themes = [str(value) for value in (taste_glance.get("themes") or []) if value][:4]
-    hero = _hero_url(rows, themes, rec_groups, project_root)
-    quote_art = _quote_asset_uri(project_root)
+    hero = _embedded_image_uri(
+        _hero_url(rows, themes, rec_groups, project_root),
+        project_root,
+    )
+    quote_art = _embedded_image_uri(_quote_asset_uri(project_root), project_root)
     hero_style = f"--hero-image:url('{_esc(hero)}');" if hero else ""
     quote_style = f"--quote-image:url('{_esc(quote_art)}');" if quote_art else ""
 
-    creators = "".join(_person_card(stat, True) for stat in _top_stats(stats.get("staff") or [], 4))
-    vas = "".join(_person_card(stat, False) for stat in _top_stats(stats.get("japanese_vas") or [], 4))
+    creators = "".join(
+        _person_card(stat, project_root, True)
+        for stat in _top_stats(stats.get("staff") or [], 4)
+    )
+    vas = "".join(
+        _person_card(stat, project_root, False)
+        for stat in _top_stats(stats.get("japanese_vas") or [], 4)
+    )
     signal_cards = "".join(
         '<article class="signal-card">'
         f'<div class="signal-icon">{_theme_icon(theme)}</div>'
@@ -300,7 +388,7 @@ def _poster_html(user, taste_glance, stats, rows, score_format, overall, rec_gro
 <main class="content"><h2 class="section-title">Your strongest signals</h2><section class="signals">{signal_cards}</section>
 <section class="dashboard"><article class="panel"><div class="panel-header">Recurring creators</div><div class="people-list">{creators}</div></article>
 <article class="panel"><div class="panel-header">Recurring Japanese VAs</div><div class="people-list">{vas}</div></article>
-<article class="panel"><div class="panel-header">Other highlights</div><div class="highlights"><div class="highlight-block"><div class="eyebrow">Community alignment</div><div class="alignment">{_esc(alignment)}</div></div><div class="highlight-block">{_recommendation_card(best)}</div></div></article></section>
+<article class="panel"><div class="panel-header">Other highlights</div><div class="highlights"><div class="highlight-block"><div class="eyebrow">Community alignment</div><div class="alignment">{_esc(alignment)}</div></div><div class="highlight-block">{_recommendation_card(best, project_root)}</div></div></article></section>
 <section class="quote"><div class="quote-mark">“</div><p>The full report explains the evidence behind these patterns and keeps detailed creators, voice actors, ratings, and recommendations interactive.</p></section>
 <footer class="footer">Generated by AniList Taste Analyzer</footer></main></div></body></html>'''
 
@@ -308,7 +396,10 @@ def _poster_html(user, taste_glance, stats, rows, score_format, overall, rec_gro
 def _social_html(user, taste_glance, rows, score_format, overall, rec_groups):
     project_root = Path(__file__).resolve().parent.parent
     themes = [str(value) for value in (taste_glance.get("themes") or []) if value][:4]
-    hero = _hero_url(rows, themes, rec_groups, project_root)
+    hero = _embedded_image_uri(
+        _hero_url(rows, themes, rec_groups, project_root),
+        project_root,
+    )
     hero_style = f"--hero-image:url('{_esc(hero)}');" if hero else ""
     theme_chips = "".join(f'<span>{_esc(theme)}</span>' for theme in themes)
     best = _best_recommendation(rec_groups)
@@ -316,7 +407,10 @@ def _social_html(user, taste_glance, rows, score_format, overall, rec_groups):
     top_rate = _signal_value(taste_glance, "Top-rating rate") or "—"
     return f'''<!doctype html><html><head><meta charset="utf-8"><style>
 :root{{--cyan:#55d9ee;--text:#f4f7fb;--muted:#a9b9cc;--hero-image:none}}*{{box-sizing:border-box}}html,body{{margin:0;width:1920px;height:1080px;background:#06111e;color:var(--text);font-family:"Segoe UI",Arial,sans-serif}}
-.card{{position:relative;width:1920px;height:1080px;overflow:hidden;border:3px solid var(--cyan);border-radius:30px;background-image:linear-gradient(90deg,rgba(3,11,21,.99) 0%,rgba(3,11,21,.93) 43%,rgba(3,11,21,.28) 72%,rgba(3,11,21,.12) 100%),var(--hero-image);background-size:cover;background-position:center;background-repeat:no-repeat}}
+.card{{position:relative;width:1920px;height:1080px;overflow:hidden;border:3px solid var(--cyan);border-radius:30px;background:linear-gradient(135deg,#061321,#07111e)}}
+.card::before{{content:"";position:absolute;inset:0 0 0 44%;background-image:var(--hero-image);background-size:cover;background-position:center 68%;background-repeat:no-repeat}}
+.card::after{{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#061321 0%,rgba(6,19,33,.98) 35%,rgba(6,19,33,.76) 55%,rgba(6,19,33,.08) 84%);pointer-events:none}}
+.card>*{{position:relative;z-index:1}}
 .content{{position:absolute;left:86px;top:72px;width:1130px}}h1{{margin:0;font-size:92px;line-height:.95;font-weight:900;letter-spacing:-3px}}.label{{margin-top:18px;color:var(--cyan);font-size:29px;font-weight:800;letter-spacing:3px;text-transform:uppercase}}h2{{margin:70px 0 0;font-size:58px;line-height:1.14;letter-spacing:-1.5px}}p{{margin:26px 0 0;width:980px;color:#d3deea;font-size:27px;line-height:1.5}}
 .metrics{{position:absolute;right:72px;top:64px;width:340px;padding:28px;border:1px solid rgba(85,217,238,.45);border-radius:22px;background:rgba(4,16,29,.9)}}.metric{{margin-bottom:22px}}.metric:last-child{{margin-bottom:0}}.metric b{{display:block;font-size:44px}}.metric span{{display:block;color:var(--muted);font-size:16px;text-transform:uppercase}}
 .bottom{{position:absolute;left:86px;right:86px;bottom:78px;display:flex;align-items:flex-end;justify-content:space-between;gap:30px}}.chips{{display:flex;flex-wrap:wrap;gap:12px;max-width:1050px}}.chips span{{padding:13px 20px;border:1px solid #2c5e78;border-radius:999px;background:rgba(13,35,56,.9);font-weight:800;font-size:20px}}.best{{min-width:450px;padding:20px 24px;border:1px solid #2c5e78;border-radius:18px;background:rgba(8,23,39,.92)}}.best small{{display:block;color:var(--muted);font-size:15px;text-transform:uppercase}}.best strong{{display:block;margin-top:7px;font-size:29px}}

@@ -1,11 +1,13 @@
-AniList Taste Analyzer 3.1.1
+AniList Taste Analyzer 3.2
 
-Image rendering hotfix
-- Fixed malformed inline CSS variables used for hero and quote artwork.
-- The previous output nested double quotes inside style="...", causing browsers
-  to discard --hero-image and --quote-image silently.
-- Image URLs now use single quotes inside CSS url(...).
-- Bundled default artwork and custom artwork now render in both HTML and PNG.
-- Added no-repeat to image backgrounds.
+Image pipeline fixes
+- Staff portraits are retained by staff_stats.
+- VA data now requests and caches Staff.image.
+- Recommendation candidates retain cover and banner artwork.
+- Every remote image is downloaded and embedded before browser rendering.
+- Embedded image cache: .anilist_cache/share_images
+- Hero art is composed as a right-side layer instead of stretched across the panel.
+- Quote artwork is confined to the right side.
+- VA cache version 6 rebuilds once to include portraits.
 
-No cache rebuild is required.
+No manual image setup is required.

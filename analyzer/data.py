@@ -141,21 +141,36 @@ def group_stats(rows, field, overall, min_count, max_score):
 
 def staff_stats(rows, overall, min_count, max_score):
     grouped = defaultdict(list)
+    images = {}
     for row in rows:
         rating = row.get("rating")
-        if rating is None: continue
-        seen=set()
+        if rating is None:
+            continue
+        seen = set()
         for credit in row.get("staff", []):
-            key=f"{credit['name']} — {credit['role']}"
+            key = f"{credit['name']} — {credit['role']}"
             if key not in seen:
-                grouped[key].append(float(rating)); seen.add(key)
-    result=[]
+                grouped[key].append(float(rating))
+                seen.add(key)
+            if credit.get("image") and key not in images:
+                images[key] = credit["image"]
+
+    result = []
     for name, ratings in grouped.items():
-        if len(ratings)>=min_count:
-            avg=statistics.fmean(ratings)
-            result.append(GroupStat(name,len(ratings),avg,avg-overall,
-                                    sum(r>=max_score for r in ratings)/len(ratings),ratings))
-    return sorted(result,key=lambda x:(x.average,x.count),reverse=True)
+        if len(ratings) >= min_count:
+            avg = statistics.fmean(ratings)
+            stat = GroupStat(
+                name,
+                len(ratings),
+                avg,
+                avg - overall,
+                sum(r >= max_score for r in ratings) / len(ratings),
+                ratings,
+            )
+            stat.image = images.get(name, "")
+            result.append(stat)
+
+    return sorted(result, key=lambda x: (x.average, x.count), reverse=True)
 
 def confidence_adjusted(stat, overall, prior_weight=5.0):
     return (stat.count*stat.average + prior_weight*overall)/(stat.count+prior_weight)
@@ -166,7 +181,7 @@ def adjusted_top_rate(stat, overall_top_rate, prior_weight=8.0):
 
 
 
-VOICE_CACHE_VERSION = 5
+VOICE_CACHE_VERSION = 6
 VOICE_BATCH_SIZE = 10
 VOICE_MAX_CHARACTER_PAGES = 3
 
@@ -222,6 +237,7 @@ def _voice_batch_query(media_ids: list[int], character_page: int) -> str:
                 id
                 name {{ full }}
                 siteUrl
+                image {{ large medium }}
                 languageV2
               }}
             }}
@@ -275,6 +291,8 @@ def _merge_voice_page(record: dict, media: dict, page: int) -> bool:
                     "id": actor_id,
                     "name": name,
                     "url": actor.get("siteUrl") or "",
+                    "image": ((actor.get("image") or {}).get("large")
+                              or (actor.get("image") or {}).get("medium") or ""),
                     "roles": [],
                 })
 
