@@ -197,7 +197,7 @@ html,body {
 }
 body { padding:20px; }
 .poster { min-height:2160px; border:2px solid var(--cyan); border-radius:28px; overflow:hidden; background:rgba(3,12,22,.68); box-shadow:0 25px 80px rgba(0,0,0,.45),inset 0 0 50px rgba(37,198,226,.05); }
-.hero { position:relative; min-height:690px; padding:54px 58px 46px; background-image:linear-gradient(90deg,rgba(3,11,21,.99) 0%,rgba(3,11,21,.93) 38%,rgba(3,11,21,.3) 70%,rgba(3,11,21,.16) 100%),linear-gradient(180deg,rgba(3,11,21,.06) 58%,rgba(3,11,21,.96) 100%),var(--hero-image); background-size:cover; background-position:center; }
+.hero { position:relative; min-height:690px; padding:54px 58px 46px; background-image:linear-gradient(90deg,rgba(3,11,21,.99) 0%,rgba(3,11,21,.93) 38%,rgba(3,11,21,.3) 70%,rgba(3,11,21,.16) 100%),linear-gradient(180deg,rgba(3,11,21,.06) 58%,rgba(3,11,21,.96) 100%),var(--hero-image); background-size:cover; background-position:center; background-repeat:no-repeat; }
 .hero::after { content:""; position:absolute; left:58px; right:58px; bottom:0; height:2px; background:linear-gradient(90deg,var(--cyan),rgba(85,217,238,.08)); }
 .header-row { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:42px; align-items:start; }
 .username { margin:0; font-size:86px; line-height:.95; font-weight:900; letter-spacing:-3px; text-shadow:0 4px 30px rgba(0,0,0,.6); }
@@ -273,8 +273,8 @@ def _poster_html(user, taste_glance, stats, rows, score_format, overall, rec_gro
     themes = [str(value) for value in (taste_glance.get("themes") or []) if value][:4]
     hero = _hero_url(rows, themes, rec_groups, project_root)
     quote_art = _quote_asset_uri(project_root)
-    hero_style = f'--hero-image:url("{_esc(hero)}");' if hero else ""
-    quote_style = f'--quote-image:url("{_esc(quote_art)}");' if quote_art else ""
+    hero_style = f"--hero-image:url('{_esc(hero)}');" if hero else ""
+    quote_style = f"--quote-image:url('{_esc(quote_art)}');" if quote_art else ""
 
     creators = "".join(_person_card(stat, True) for stat in _top_stats(stats.get("staff") or [], 4))
     vas = "".join(_person_card(stat, False) for stat in _top_stats(stats.get("japanese_vas") or [], 4))
@@ -309,14 +309,14 @@ def _social_html(user, taste_glance, rows, score_format, overall, rec_groups):
     project_root = Path(__file__).resolve().parent.parent
     themes = [str(value) for value in (taste_glance.get("themes") or []) if value][:4]
     hero = _hero_url(rows, themes, rec_groups, project_root)
-    hero_style = f'--hero-image:url("{_esc(hero)}");' if hero else ""
+    hero_style = f"--hero-image:url('{_esc(hero)}');" if hero else ""
     theme_chips = "".join(f'<span>{_esc(theme)}</span>' for theme in themes)
     best = _best_recommendation(rec_groups)
     best_text = _esc(best.get("title") if best else "—")
     top_rate = _signal_value(taste_glance, "Top-rating rate") or "—"
     return f'''<!doctype html><html><head><meta charset="utf-8"><style>
 :root{{--cyan:#55d9ee;--text:#f4f7fb;--muted:#a9b9cc;--hero-image:none}}*{{box-sizing:border-box}}html,body{{margin:0;width:1920px;height:1080px;background:#06111e;color:var(--text);font-family:"Segoe UI",Arial,sans-serif}}
-.card{{position:relative;width:1920px;height:1080px;overflow:hidden;border:3px solid var(--cyan);border-radius:30px;background-image:linear-gradient(90deg,rgba(3,11,21,.99) 0%,rgba(3,11,21,.93) 43%,rgba(3,11,21,.28) 72%,rgba(3,11,21,.12) 100%),var(--hero-image);background-size:cover;background-position:center}}
+.card{{position:relative;width:1920px;height:1080px;overflow:hidden;border:3px solid var(--cyan);border-radius:30px;background-image:linear-gradient(90deg,rgba(3,11,21,.99) 0%,rgba(3,11,21,.93) 43%,rgba(3,11,21,.28) 72%,rgba(3,11,21,.12) 100%),var(--hero-image);background-size:cover;background-position:center;background-repeat:no-repeat}}
 .content{{position:absolute;left:86px;top:72px;width:1130px}}h1{{margin:0;font-size:92px;line-height:.95;font-weight:900;letter-spacing:-3px}}.label{{margin-top:18px;color:var(--cyan);font-size:29px;font-weight:800;letter-spacing:3px;text-transform:uppercase}}h2{{margin:70px 0 0;font-size:58px;line-height:1.14;letter-spacing:-1.5px}}p{{margin:26px 0 0;width:980px;color:#d3deea;font-size:27px;line-height:1.5}}
 .metrics{{position:absolute;right:72px;top:64px;width:340px;padding:28px;border:1px solid rgba(85,217,238,.45);border-radius:22px;background:rgba(4,16,29,.9)}}.metric{{margin-bottom:22px}}.metric:last-child{{margin-bottom:0}}.metric b{{display:block;font-size:44px}}.metric span{{display:block;color:var(--muted);font-size:16px;text-transform:uppercase}}
 .bottom{{position:absolute;left:86px;right:86px;bottom:78px;display:flex;align-items:flex-end;justify-content:space-between;gap:30px}}.chips{{display:flex;flex-wrap:wrap;gap:12px;max-width:1050px}}.chips span{{padding:13px 20px;border:1px solid #2c5e78;border-radius:999px;background:rgba(13,35,56,.9);font-weight:800;font-size:20px}}.best{{min-width:450px;padding:20px 24px;border:1px solid #2c5e78;border-radius:18px;background:rgba(8,23,39,.92)}}.best small{{display:block;color:var(--muted);font-size:15px;text-transform:uppercase}}.best strong{{display:block;margin-top:7px;font-size:29px}}
