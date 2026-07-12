@@ -120,64 +120,148 @@ def normalize_entries(entries, statuses, include_unrated, include_spoiler_tags, 
     return selected
 
 def group_stats(rows, field, overall, min_count, max_score):
-    grouped = defaultdict(list)
+    """Build hybrid viewing/rating statistics.
+
+    Every matching viewed entry contributes to ``count``. Only explicitly
+    rated entries contribute to averages, lift, and top-rating rate. This
+    prevents a sparsely rated list from pretending the other watched anime do
+    not exist.
+    """
+    grouped = defaultdict(lambda: {"count": 0, "ratings": []})
     for row in rows:
         rating = row.get("rating")
-        if rating is None:
-            continue
         values = row.get(field, [])
         if not isinstance(values, list):
             values = [values]
         for value in set(v for v in values if v):
-            grouped[str(value)].append(float(rating))
+            bucket = grouped[str(value)]
+            bucket["count"] += 1
+            if rating is not None:
+                bucket["ratings"].append(float(rating))
+
     stats = []
-    for name, ratings in grouped.items():
-        if len(ratings) < min_count:
+    for name, payload in grouped.items():
+        count = payload["count"]
+        ratings = payload["ratings"]
+        if count < min_count:
             continue
-        avg = statistics.fmean(ratings)
-        stats.append(GroupStat(name, len(ratings), avg, avg-overall,
-                               sum(r >= max_score for r in ratings)/len(ratings), ratings))
-    return sorted(stats, key=lambda x: (x.average, x.count), reverse=True)
+        average = statistics.fmean(ratings) if ratings else None
+        lift = (average - overall) if average is not None and overall is not None else None
+        top_rate = (
+            sum(value >= max_score for value in ratings) / len(ratings)
+            if ratings else None
+        )
+        stats.append(GroupStat(
+            name=name,
+            count=count,
+            average=average,
+            lift=lift,
+            top_rate=top_rate,
+            ratings=ratings,
+            rated_count=len(ratings),
+        ))
+    rated_total = sum(1 for row in rows if row.get("rating") is not None)
+    strong_rating_base = (
+        rated_total >= 10 and rated_total / len(rows) >= .35
+        if rows else False
+    )
+    if strong_rating_base:
+        return sorted(
+            stats,
+            key=lambda item: (
+                item.average if item.average is not None else -1,
+                item.count,
+            ),
+            reverse=True,
+        )
+    return sorted(
+        stats,
+        key=lambda item: (
+            item.count,
+            item.rated_count,
+            item.average if item.average is not None else -1,
+        ),
+        reverse=True,
+    )
+
 
 def staff_stats(rows, overall, min_count, max_score):
-    grouped = defaultdict(list)
+    grouped = defaultdict(lambda: {"count": 0, "ratings": []})
     images = {}
     for row in rows:
         rating = row.get("rating")
-        if rating is None:
-            continue
         seen = set()
         for credit in row.get("staff", []):
             key = f"{credit['name']} — {credit['role']}"
-            if key not in seen:
-                grouped[key].append(float(rating))
-                seen.add(key)
+            if key in seen:
+                continue
+            seen.add(key)
+            grouped[key]["count"] += 1
+            if rating is not None:
+                grouped[key]["ratings"].append(float(rating))
             if credit.get("image") and key not in images:
                 images[key] = credit["image"]
 
     result = []
-    for name, ratings in grouped.items():
-        if len(ratings) >= min_count:
-            avg = statistics.fmean(ratings)
-            stat = GroupStat(
-                name,
-                len(ratings),
-                avg,
-                avg - overall,
-                sum(r >= max_score for r in ratings) / len(ratings),
-                ratings,
-            )
-            stat.image = images.get(name, "")
-            result.append(stat)
+    for name, payload in grouped.items():
+        if payload["count"] < min_count:
+            continue
+        ratings = payload["ratings"]
+        average = statistics.fmean(ratings) if ratings else None
+        stat = GroupStat(
+            name=name,
+            count=payload["count"],
+            average=average,
+            lift=(average - overall) if average is not None and overall is not None else None,
+            top_rate=(
+                sum(value >= max_score for value in ratings) / len(ratings)
+                if ratings else None
+            ),
+            ratings=ratings,
+            rated_count=len(ratings),
+        )
+        stat.image = images.get(name, "")
+        result.append(stat)
 
-    return sorted(result, key=lambda x: (x.average, x.count), reverse=True)
+    rated_total = sum(1 for row in rows if row.get("rating") is not None)
+    strong_rating_base = rated_total >= 10 and rated_total / len(rows) >= .35 if rows else False
+    if strong_rating_base:
+        return sorted(
+            result,
+            key=lambda item: (
+                item.average if item.average is not None else -1,
+                item.count,
+            ),
+            reverse=True,
+        )
+    return sorted(
+        result,
+        key=lambda item: (
+            item.count,
+            item.rated_count,
+            item.average if item.average is not None else -1,
+        ),
+        reverse=True,
+    )
+
 
 def confidence_adjusted(stat, overall, prior_weight=5.0):
-    return (stat.count*stat.average + prior_weight*overall)/(stat.count+prior_weight)
+    if stat.average is None:
+        return overall if overall is not None else 0.0
+    evidence = getattr(stat, "rated_count", len(stat.ratings))
+    if overall is None:
+        return stat.average
+    return (evidence * stat.average + prior_weight * overall) / (evidence + prior_weight)
+
 
 def adjusted_top_rate(stat, overall_top_rate, prior_weight=8.0):
-    top_count=stat.top_rate*stat.count
-    return (top_count+prior_weight*overall_top_rate)/(stat.count+prior_weight)
+    if stat.top_rate is None:
+        return overall_top_rate
+    evidence = getattr(stat, "rated_count", len(stat.ratings))
+    top_count = stat.top_rate * evidence
+    return (top_count + prior_weight * overall_top_rate) / (evidence + prior_weight)
+
+
 
 
 
@@ -410,16 +494,19 @@ def assign_franchise_ids(rows):
 
 
 def voice_actor_stats(rows, language, overall, min_count, max_score):
+    """Return recurring actors across every viewed entry.
+
+    Franchise recurrence is based on the full viewed list. Rating fields are
+    calculated only from franchises containing at least one rated entry.
+    """
     assign_franchise_ids(rows)
     grouped = defaultdict(dict)
     links = {}
     actor_names = {}
+    actor_images = {}
 
     for row in rows:
         rating = row.get("rating")
-        if rating is None:
-            continue
-
         franchise_id = row.get("franchise_id", row.get("id"))
         for actor in (row.get("voice_actors") or {}).get(language, []):
             actor_id = actor.get("id") or actor.get("name")
@@ -428,11 +515,14 @@ def voice_actor_stats(rows, language, overall, min_count, max_score):
 
             actor_names[actor_id] = actor["name"]
             links[actor_id] = actor.get("url") or ""
+            if actor.get("image"):
+                actor_images[actor_id] = actor["image"]
             franchise = grouped[actor_id].setdefault(
                 franchise_id,
                 {"ratings": [], "appearances": []},
             )
-            franchise["ratings"].append(float(rating))
+            if rating is not None:
+                franchise["ratings"].append(float(rating))
 
             roles = actor.get("roles") or []
             role_counts = Counter((role.get("role") or "UNKNOWN").upper() for role in roles)
@@ -444,7 +534,7 @@ def voice_actor_stats(rows, language, overall, min_count, max_score):
                 "main_count": role_counts.get("MAIN", 0),
                 "supporting_count": role_counts.get("SUPPORTING", 0),
                 "background_count": role_counts.get("BACKGROUND", 0),
-                "rating": float(rating),
+                "rating": float(rating) if rating is not None else None,
             })
 
     result = []
@@ -452,44 +542,46 @@ def voice_actor_stats(rows, language, overall, min_count, max_score):
         if len(franchises) < min_count:
             continue
 
-        franchise_ratings = []
+        rated_franchise_scores = []
         appearances = []
         for franchise_id, payload in franchises.items():
-            franchise_rating = statistics.fmean(payload["ratings"])
-            franchise_ratings.append(franchise_rating)
+            franchise_rating = (
+                statistics.fmean(payload["ratings"])
+                if payload["ratings"] else None
+            )
+            if franchise_rating is not None:
+                rated_franchise_scores.append(franchise_rating)
             for appearance in payload["appearances"]:
                 appearance = dict(appearance)
                 appearance["franchise_id"] = franchise_id
                 appearance["franchise_rating"] = franchise_rating
                 appearances.append(appearance)
 
-        avg = statistics.fmean(franchise_ratings)
-
+        average = (
+            statistics.fmean(rated_franchise_scores)
+            if rated_franchise_scores else None
+        )
         stat = GroupStat(
-            actor_names[actor_id],
-            len(franchises),
-            avg,
-            avg - overall,
-            sum(value >= max_score for value in franchise_ratings) / len(franchise_ratings),
-            franchise_ratings,
+            name=actor_names[actor_id],
+            count=len(franchises),
+            average=average,
+            lift=(average - overall) if average is not None and overall is not None else None,
+            top_rate=(
+                sum(value >= max_score for value in rated_franchise_scores)
+                / len(rated_franchise_scores)
+                if rated_franchise_scores else None
+            ),
+            ratings=rated_franchise_scores,
+            rated_count=len(rated_franchise_scores),
         )
         stat.url = links.get(actor_id, "")
-        stat.image = next(
-            (
-                actor.get("image") or ""
-                for row in rows
-                for actor in (row.get("voice_actors") or {}).get(language, [])
-                if (actor.get("id") or actor.get("name")) == actor_id
-                and actor.get("image")
-            ),
-            "",
-        )
+        stat.image = actor_images.get(actor_id, "")
         stat.appearances = sorted(
             appearances,
             key=lambda item: (
                 -item["main_count"],
                 -item["supporting_count"],
-                -item["rating"],
+                -(item["rating"] if item["rating"] is not None else -1),
                 item["anime"].lower(),
             ),
         )
@@ -500,12 +592,13 @@ def voice_actor_stats(rows, language, overall, min_count, max_score):
 
     return sorted(
         result,
-        key=lambda stat: (
-            getattr(stat, "main_roles", 0),
-            getattr(stat, "supporting_roles", 0),
-            stat.count,
-            stat.top_rate,
-            stat.average,
+        key=lambda item: (
+            getattr(item, "main_roles", 0),
+            getattr(item, "supporting_roles", 0),
+            item.count,
+            item.top_rate if item.top_rate is not None else -1,
+            item.average if item.average is not None else -1,
         ),
         reverse=True,
     )
+

@@ -349,14 +349,14 @@ def _draw_cover(user, taste_glance, stats, rows, score_format, overall, rec_grou
 
     metric_box = (1214, 76, 1510, 292)
     _panel(draw, metric_box, fill="#081526ee", radius=22)
-    draw.text((1248, 98), str(len(rows)), font=_font(43, True), fill=TEXT)
-    draw.text((1250, 148), "RATED ANIME", font=_font(15, True), fill=MUTED)
-    draw.text((1248, 184), f"{overall:.1f}/{int(score_format['max'])}", font=_font(36, True), fill=TEXT)
+    rated_count = sum(1 for row in rows if row.get("rating") is not None)
+    average_text = f"{overall:.1f}/{int(score_format['max'])}" if overall is not None else "—"
+    draw.text((1248, 98), str(len(rows)), font=_font(40, True), fill=TEXT)
+    draw.text((1250, 146), "WATCHED", font=_font(14, True), fill=MUTED)
+    draw.text((1360, 98), str(rated_count), font=_font(40, True), fill=TEXT)
+    draw.text((1362, 146), "RATED", font=_font(14, True), fill=MUTED)
+    draw.text((1248, 184), average_text, font=_font(34, True), fill=TEXT)
     draw.text((1250, 226), "AVERAGE", font=_font(15, True), fill=MUTED)
-    top = _signal_value(taste_glance, "Top-rating rate")
-    if top:
-        draw.text((1390, 184), top, font=_font(36, True), fill=TEXT)
-        draw.text((1392, 226), "TOP RATE", font=_font(15, True), fill=MUTED)
 
     headline = taste_glance.get("headline") or "A personal anime taste profile."
     headline_font = _font(43, True)
@@ -531,14 +531,14 @@ def _draw_social_card(user, taste_glance, rows, score_format, overall, output_di
 
     metric_box = (1490, 72, 1818, 360)
     _panel(draw, metric_box, fill="#081526ee", radius=22)
-    draw.text((1528, 98), str(len(rows)), font=_font(44, True), fill=TEXT)
-    draw.text((1530, 148), "RATED ANIME", font=_font(15, True), fill=MUTED)
-    draw.text((1528, 194), f"{overall:.1f}/{int(score_format['max'])}", font=_font(38, True), fill=TEXT)
+    rated_count = sum(1 for row in rows if row.get("rating") is not None)
+    average_text = f"{overall:.1f}/{int(score_format['max'])}" if overall is not None else "—"
+    draw.text((1528, 98), str(len(rows)), font=_font(40, True), fill=TEXT)
+    draw.text((1530, 146), "WATCHED", font=_font(14, True), fill=MUTED)
+    draw.text((1650, 98), str(rated_count), font=_font(40, True), fill=TEXT)
+    draw.text((1652, 146), "RATED", font=_font(14, True), fill=MUTED)
+    draw.text((1528, 194), average_text, font=_font(36, True), fill=TEXT)
     draw.text((1530, 238), "AVERAGE", font=_font(15, True), fill=MUTED)
-    top = _signal_value(taste_glance, "Top-rating rate")
-    if top:
-        draw.text((1528, 280), top, font=_font(38, True), fill=TEXT)
-        draw.text((1530, 324), "TOP RATE", font=_font(15, True), fill=MUTED)
 
     # Fill the previous empty lower area with themes and a recommendation.
     draw.text((96, 760), "STRONGEST SIGNALS", font=_font(25, True), fill=CYAN)
@@ -599,7 +599,8 @@ def write_share_assets(user, taste_glance, stats, rows, score_format, overall, o
         taste_glance.get("headline") or "",
         taste_glance.get("summary") or "",
         "",
-        f"{len(rows)} rated anime | Average: {overall:.1f}/{int(score_format['max'])}",
+        f"{len(rows)} watched anime | {sum(1 for row in rows if row.get('rating') is not None)} rated | Average: "
+        + (f"{overall:.1f}/{int(score_format['max'])}" if overall is not None else "—"),
     ]
     if taste_glance.get("themes"):
         summary.extend(["", "Strongest signals: " + ", ".join(taste_glance["themes"][:4])])

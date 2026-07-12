@@ -25,6 +25,16 @@ def _signal_value(taste_glance: dict, label: str) -> str:
     )
 
 
+def _rating_metrics(rows, overall, score_format):
+    watched_count = len(rows)
+    rated_count = sum(1 for row in rows if row.get("rating") is not None)
+    average_text = (
+        f"{overall:.1f}/{int(score_format['max'])}"
+        if overall is not None else "—"
+    )
+    return watched_count, rated_count, average_text
+
+
 def _best_recommendation(rec_groups: dict | None) -> dict | None:
     return ((rec_groups or {}).get("Best matches") or [None])[0]
 
@@ -290,7 +300,7 @@ def _poster_html(user, taste_glance, stats, rows, score_format, overall, rec_gro
         '</article>'
         for theme in themes
     )
-    top_rate = _signal_value(taste_glance, "Top-rating rate") or "—"
+    watched_count, rated_count, average_text = _rating_metrics(rows, overall, score_format)
     alignment = _signal_value(taste_glance, "Community alignment") or "Personal"
     best = _best_recommendation(rec_groups)
 
@@ -298,9 +308,9 @@ def _poster_html(user, taste_glance, stats, rows, score_format, overall, rec_gro
 <body style="{hero_style}{quote_style}"><div class="poster">
 <section class="hero"><div class="header-row"><div><h1 class="username">{_esc(user.get("name") or "AniList user")}</h1><div class="report-label">Anime Taste Report</div></div>
 <aside class="metrics">
-<div class="metric"><div class="metric-icon">{_theme_icon("Educational")}</div><div><strong>{len(rows)}</strong><span>Rated anime</span></div></div>
-<div class="metric"><div class="metric-icon"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/></svg></div><div><strong>{overall:.1f}/{int(score_format["max"])}</strong><span>Average rating</span></div></div>
-<div class="metric"><div class="metric-icon"><svg viewBox="0 0 24 24"><path d="M4 20V14m5 6V9m5 11V5m5 15V2"/></svg></div><div><strong>{_esc(top_rate)}</strong><span>Top-rating rate</span></div></div>
+<div class="metric"><div class="metric-icon">{_theme_icon("Educational")}</div><div><strong>{watched_count}</strong><span>Watched anime</span></div></div>
+<div class="metric"><div class="metric-icon"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg></div><div><strong>{rated_count}</strong><span>Rated anime</span></div></div>
+<div class="metric"><div class="metric-icon"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/></svg></div><div><strong>{_esc(average_text)}</strong><span>Average rating</span></div></div>
 </aside></div><div class="hero-copy"><h2>{_esc(taste_glance.get("headline") or "A personal anime taste profile.")}</h2><p>{_esc(taste_glance.get("summary") or "")}</p></div></section>
 <main class="content"><h2 class="section-title">Your strongest signals</h2><section class="signals">{signal_cards}</section>
 <section class="dashboard"><article class="panel"><div class="panel-header">Recurring creators</div><div class="people-list">{creators}</div></article>
@@ -325,7 +335,7 @@ def _social_html(user, taste_glance, rows, score_format, overall, rec_groups):
     theme_chips = "".join(f'<span>{_esc(theme)}</span>' for theme in themes)
     best = _best_recommendation(rec_groups)
     best_text = _esc(best.get("title") if best else "—")
-    top_rate = _signal_value(taste_glance, "Top-rating rate") or "—"
+    watched_count, rated_count, average_text = _rating_metrics(rows, overall, score_format)
     return f'''<!doctype html><html><head><meta charset="utf-8"><style>
 :root{{--cyan:#55d9ee;--text:#f4f7fb;--muted:#a9b9cc;--hero-image:none}}*{{box-sizing:border-box}}html,body{{margin:0;width:1920px;height:1080px;background:#06111e;color:var(--text);font-family:"Segoe UI",Arial,sans-serif}}
 .card{{position:relative;width:1920px;height:1080px;overflow:hidden;border:3px solid var(--cyan);border-radius:30px;background:#06111e}}
@@ -335,7 +345,7 @@ def _social_html(user, taste_glance, rows, score_format, overall, rec_groups):
 .content{{position:absolute;left:86px;top:62px;width:1130px}}h1{{margin:0;font-size:84px;line-height:.95;font-weight:900;letter-spacing:-3px}}.label{{margin-top:18px;color:var(--cyan);font-size:29px;font-weight:800;letter-spacing:3px;text-transform:uppercase}}h2{{margin:58px 0 0;font-size:52px;line-height:1.14;letter-spacing:-1.5px}}p{{margin:22px 0 0;width:930px;color:#d3deea;font-size:24px;line-height:1.5}}
 .metrics{{position:absolute;right:72px;top:64px;width:340px;padding:28px;border:1px solid rgba(85,217,238,.45);border-radius:22px;background:rgba(4,16,29,.9)}}.metric{{margin-bottom:22px}}.metric:last-child{{margin-bottom:0}}.metric b{{display:block;font-size:44px}}.metric span{{display:block;color:var(--muted);font-size:16px;text-transform:uppercase}}
 .bottom{{position:absolute;left:86px;right:86px;top:675px;bottom:58px;display:grid;grid-template-columns:1fr 470px;gap:30px;align-items:stretch;border-top:1px solid rgba(85,217,238,.35);padding-top:56px}}.chips{{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;position:relative}}.chips::before{{content:"STRONGEST SIGNALS";position:absolute;top:-40px;left:0;color:var(--cyan);font-size:20px;font-weight:800;letter-spacing:1px}}.chips span{{display:flex;align-items:center;justify-content:center;padding:18px 22px;border:1px solid #2c5e78;border-radius:18px;background:linear-gradient(145deg,rgba(16,44,69,.95),rgba(8,25,42,.95));font-weight:800;font-size:25px}}.best{{align-self:stretch;display:flex;flex-direction:column;justify-content:center;min-width:470px;padding:28px 30px;border:1px solid #2c5e78;border-radius:18px;background:linear-gradient(145deg,rgba(16,44,69,.95),rgba(8,25,42,.95))}}.best small{{display:block;color:var(--muted);font-size:17px;text-transform:uppercase}}.best strong{{display:block;margin-top:10px;font-size:34px}}
-</style></head><body><div class="card">{hero_image}<div class="content"><h1>{_esc(user.get("name") or "AniList user")}</h1><div class="label">Anime Taste Report</div><h2>{_esc(taste_glance.get("headline") or "")}</h2><p>{_esc(taste_glance.get("summary") or "")}</p></div><div class="metrics"><div class="metric"><b>{len(rows)}</b><span>Rated anime</span></div><div class="metric"><b>{overall:.1f}/{int(score_format["max"])}</b><span>Average</span></div><div class="metric"><b>{_esc(top_rate)}</b><span>Top-rating rate</span></div></div><div class="bottom"><div class="chips">{theme_chips}</div><div class="best"><small>Best match</small><strong>{best_text}</strong></div></div></div></body></html>'''
+</style></head><body><div class="card">{hero_image}<div class="content"><h1>{_esc(user.get("name") or "AniList user")}</h1><div class="label">Anime Taste Report</div><h2>{_esc(taste_glance.get("headline") or "")}</h2><p>{_esc(taste_glance.get("summary") or "")}</p></div><div class="metrics"><div class="metric"><b>{watched_count}</b><span>Watched anime</span></div><div class="metric"><b>{rated_count}</b><span>Rated anime</span></div><div class="metric"><b>{_esc(average_text)}</b><span>Average</span></div></div><div class="bottom"><div class="chips">{theme_chips}</div><div class="best"><small>Best match</small><strong>{best_text}</strong></div></div></div></body></html>'''
 
 
 def _launch_browser(playwright):
@@ -401,7 +411,9 @@ def write_share_assets(user, taste_glance, stats, rows, score_format, overall, o
         print(f"Browser cover rendering failed; using Pillow fallback: {exc}")
         write_share_assets_pillow(user, taste_glance, stats, rows, score_format, overall, output_dir, rec_groups)
     best = _best_recommendation(rec_groups)
-    summary = [f"{user.get('name') or 'AniList user'}'s Anime Taste Report", "", taste_glance.get("headline") or "", taste_glance.get("summary") or "", "", f"{len(rows)} rated anime | Average: {overall:.1f}/{int(score_format['max'])}"]
+    rated_count = sum(1 for row in rows if row.get("rating") is not None)
+    average_text = f"{overall:.1f}/{int(score_format['max'])}" if overall is not None else "—"
+    summary = [f"{user.get('name') or 'AniList user'}'s Anime Taste Report", "", taste_glance.get("headline") or "", taste_glance.get("summary") or "", "", f"{len(rows)} watched anime | {rated_count} rated | Average: {average_text}"]
     if taste_glance.get("themes"):
         summary.extend(["", "Strongest signals: " + ", ".join(taste_glance["themes"][:4])])
     if best:
