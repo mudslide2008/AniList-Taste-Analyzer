@@ -161,22 +161,67 @@ def _theme_description(name: str) -> str:
 
 
 def _theme_icon(name: str) -> str:
+    """Return a distinct line icon for common AniList signal families."""
     key = name.casefold()
-    if "travel" in key:
-        path = '<path d="M12 21s7-4.8 7-11a7 7 0 1 0-14 0c0 6.2 7 11 7 11Z"/><circle cx="12" cy="10" r="2.3"/>'
-    elif "histor" in key:
-        path = '<path d="M4 19.5V5.8c3-1.4 5.7-1.2 8 0v13.7c-2.3-1.2-5-1.4-8 0Zm8-13.7c2.3-1.2 5-1.4 8 0v13.7c-3-1.4-5.7-1.2-8 0"/>'
-    elif "survival" in key:
-        path = '<path d="M12 22c4.2-2.2 6.5-5.1 6.5-8.7 0-2.8-1.7-5-4.2-6.4.2 2.6-1 4.3-2.3 5.1.1-3.9-2.1-6.7-5.3-9C7.3 7.3 5.5 9 5.5 12.7 5.5 16.8 8.1 20 12 22Z"/>'
-    elif "dungeon" in key:
-        path = '<path d="M4 4h16v4H4zM6 8v12m12-12v12M9 8v5m6-5v5M3 20h18"/>'
-    elif "science" in key or "educational" in key:
-        path = '<path d="M9 3h6m-5 0v5l-5.2 9a2 2 0 0 0 1.7 3h11a2 2 0 0 0 1.7-3L14 8V3M7.5 15h9"/>'
-    elif "music" in key:
-        path = '<path d="M9 18V5l10-2v13M9 18a3 3 0 1 1-3-3h3m10 1a3 3 0 1 1-3-3h3"/>'
-    else:
-        path = '<path d="M12 3 9.5 9H3l5 4-2 7 6-4 6 4-2-7 5-4h-6.5L12 3Z"/>'
-    return f'<svg viewBox="0 0 24 24" aria-hidden="true">{path}</svg>'
+
+    icon_paths = {
+        "compass": '<circle cx="12" cy="12" r="8.5"/><path d="m15.5 8.5-2.1 4.9-4.9 2.1 2.1-4.9 4.9-2.1Z"/>',
+        "book": '<path d="M4 19.5V5.8c3-1.4 5.7-1.2 8 0v13.7c-2.3-1.2-5-1.4-8 0Zm8-13.7c2.3-1.2 5-1.4 8 0v13.7c-3-1.4-5.7-1.2-8 0"/>',
+        "flame": '<path d="M12 22c4.2-2.2 6.5-5.1 6.5-8.7 0-2.8-1.7-5-4.2-6.4.2 2.6-1 4.3-2.3 5.1.1-3.9-2.1-6.7-5.3-9C7.3 7.3 5.5 9 5.5 12.7 5.5 16.8 8.1 20 12 22Z"/>',
+        "gate": '<path d="M4 4h16v4H4zM6 8v12m12-12v12M9 8v5m6-5v5M3 20h18"/>',
+        "flask": '<path d="M9 3h6m-5 0v5l-5.2 9a2 2 0 0 0 1.7 3h11a2 2 0 0 0 1.7-3L14 8V3M7.5 15h9"/>',
+        "music": '<path d="M9 18V5l10-2v13M9 18a3 3 0 1 1-3-3h3m10 1a3 3 0 1 1-3-3h3"/>',
+        "briefcase": '<path d="M9 6V4h6v2M4 7h16v12H4zM4 11c4 2 12 2 16 0M10 12h4"/>',
+        "sprout": '<path d="M12 21v-9m0 3c-4.6 0-7-2.4-7-6 4.4 0 7 2.2 7 6Zm0-3c0-4.2 2.5-6.5 7-6.5 0 3.8-2.4 6.5-7 6.5Z"/>',
+        "people": '<circle cx="8" cy="8" r="3"/><circle cx="16.5" cy="9" r="2.5"/><path d="M2.5 20c.5-4 2.5-6 5.5-6s5 2 5.5 6m0-5c3.7-.8 6.7 1.1 7.3 5"/>',
+        "leaf": '<path d="M20 4C11 4 5 8.2 5 15c0 3 2 5 5 5 6.8 0 10-7.2 10-16ZM6 19c2.7-4 6.3-7 11-9"/>',
+        "utensils": '<path d="M7 3v7m-2-7v4c0 2 1 3 2 3s2-1 2-3V3m-2 7v11m9-18v18m0-18c-3 2-3 7 0 9"/>',
+        "wand": '<path d="m4 20 11-11m-8 8 3 3m5-16 1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3Zm4 9 .8 2.2L22 16l-2.2.8L19 19l-.8-2.2L16 16l2.2-.8L19 13Z"/>',
+        "rocket": '<path d="M14 4c3-2 5-2 6-2 0 1 0 3-2 6l-5 5-4-4 5-5ZM8 10l-4 1-2 4 6 1m6-6 1 6 4-2 1-4M8 16l-2 4 4-2"/>',
+        "magnifier": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5M8 10h5m-2.5-2.5V12.5"/>',
+        "trophy": '<path d="M8 4h8v5c0 4-1.8 6-4 6s-4-2-4-6V4Zm0 2H4c0 4 1.5 6 4.5 6m7-6H20c0 4-1.5 6-4.5 6M12 15v4m-4 2h8"/>',
+        "palette": '<path d="M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 0-4H12a2 2 0 0 1 0-4h3a6 6 0 0 0 0-12h-3Z"/><circle cx="7.5" cy="10" r=".8"/><circle cx="10" cy="6.8" r=".8"/><circle cx="14" cy="6.5" r=".8"/>',
+        "strategy": '<path d="M6 4h12l-2 5 2 5H6l2-5-2-5Zm6 10v7M8 21h8"/>',
+        "school": '<path d="m3 10 9-6 9 6-9 5-9-5Zm3 3v6m12-6v6M8 19h8"/>',
+        "smile": '<circle cx="12" cy="12" r="9"/><path d="M8 10h.01M16 10h.01M8 15c2.5 2 5.5 2 8 0"/>',
+        "heart": '<path d="M12 20S4 15.5 4 9.5C4 6.5 6 5 8.3 5c1.7 0 3 1 3.7 2.2C12.7 6 14 5 15.7 5 18 5 20 6.5 20 9.5 20 15.5 12 20 12 20Z"/>',
+        "eye": '<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/>',
+        "shield": '<path d="M12 3 19 6v5c0 4.8-2.7 8-7 10-4.3-2-7-5.2-7-10V6l7-3Zm0 5v7m-3.5-3.5h7"/>',
+        "spark": '<path d="M12 3 14 9l6 2-6 2-2 6-2-6-6-2 6-2 2-6Zm7-1 .7 2.3L22 5l-2.3.7L19 8l-.7-2.3L16 5l2.3-.7L19 2Z"/>',
+    }
+
+    families = [
+        (("travel", "adventure", "exploration", "outdoor", "wilderness", "journey"), "compass"),
+        (("histor", "archaeolog", "ancient", "period piece"), "book"),
+        (("survival", "death game", "disaster", "post-apocalyptic"), "flame"),
+        (("dungeon", "castle", "kingdom", "medieval"), "gate"),
+        (("science", "educational", "medicine", "engineering", "technology"), "flask"),
+        (("music", "band", "singing", "idol"), "music"),
+        (("work", "office", "business", "economics", "entrepreneur", "profession"), "briefcase"),
+        (("coming of age", "rehabilitation", "mentorship", "growth"), "sprout"),
+        (("found family", "family life", "friendship", "adoption", "orphan"), "people"),
+        (("agriculture", "farming", "environmental", "nature", "animals"), "leaf"),
+        (("cooking", "food", "restaurant"), "utensils"),
+        (("magic", "fantasy", "mythology", "supernatural", "fairy tale"), "wand"),
+        (("space", "sci-fi", "mecha", "robot", "cyberpunk"), "rocket"),
+        (("mystery", "detective", "crime", "thriller", "psychological"), "magnifier"),
+        (("sports", "athletics", "tournament", "competition"), "trophy"),
+        (("drawing", "art", "writing", "photography", "acting", "filmmaking"), "palette"),
+        (("politics", "strategy", "military", "war", "espionage"), "strategy"),
+        (("school", "school club", "student council"), "school"),
+        (("comedy", "parody", "satire", "slapstick"), "smile"),
+        (("romance", "love", "marriage", "couple"), "heart"),
+        (("horror", "gore", "body horror", "ghost"), "eye"),
+        (("action", "martial arts", "assassin", "revenge"), "shield"),
+    ]
+
+    icon = "spark"
+    for keywords, candidate in families:
+        if any(keyword in key for keyword in keywords):
+            icon = candidate
+            break
+
+    return f'<svg viewBox="0 0 24 24" aria-hidden="true">{icon_paths[icon]}</svg>'
 
 
 def _person_card(stat: Any, project_root: Path, creator: bool = False) -> str:

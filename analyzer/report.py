@@ -286,14 +286,72 @@ def rec_table(title, recs, score_format):
 def recommendations_section(groups, score_format):
     best = groups.get("Best matches") or []
     if not best and not any(groups.values()):
-        return "<section><h2>Recommendations</h2><p class='muted'>AniList did not return enough recommendation data.</p></section>"
+        return "<section id='recommendations'><h2>Recommendations</h2><p class='muted'>AniList did not return enough recommendation data.</p></section>"
     main = rec_table("Best matches", best, score_format)
     extras=[]
     for name in ("Hidden gems", "Because you loved…", "From your viewing history", "Outside your comfort zone"):
         recs=groups.get(name) or []
         if recs:
             extras.append(f"<details class='rec-details'><summary>{esc(name)} ({len(recs)})</summary>{rec_table(name,recs,score_format)}</details>")
-    return "<section><h2>Recommendations</h2><p class='hint'>Everything already present anywhere on this AniList is excluded. Best matches are shown first; alternate recommendation views are expandable.</p>"+main+''.join(extras)+"</section>"
+    return "<section id='recommendations'><h2>Recommendations</h2><p class='hint'>Everything already present anywhere on this AniList is excluded. Best matches are shown first; alternate recommendation views are expandable.</p>"+main+''.join(extras)+"</section>"
+
+
+
+def planning_priority_section(planning_rows, score_format):
+    if not planning_rows:
+        return (
+            "<section id='planning'><h2>Planning-list priority</h2>"
+            "<p class='muted'>This AniList does not currently have any anime in Planning.</p></section>"
+        )
+
+    cards = []
+    for item in planning_rows[:8]:
+        cover = item.get("cover_image") or ""
+        cover_html = (
+            f"<img src='{esc(cover)}' alt='' loading='lazy'>"
+            if cover else "<div class='plan-cover plan-cover-empty'></div>"
+        )
+        community = (
+            f"{item.get('community_score'):.0f}% AniList"
+            if item.get("community_score") else "No community score"
+        )
+        cards.append(
+            "<article class='plan-card'>"
+            f"<div class='plan-rank'>#{item.get('planning_rank')}</div>"
+            f"<div class='plan-cover'>{cover_html}</div>"
+            "<div class='plan-copy'>"
+            f"<div class='plan-label'>{esc(item.get('priority_label'))} · {item.get('fit_score')} fit</div>"
+            f"<h3><a href='{esc(item.get('url'))}'>{esc(item.get('title'))}</a></h3>"
+            f"<div class='plan-meta'>{esc(item.get('format') or 'Unknown')} · {esc(item.get('year') or '—')} · {community}</div>"
+            f"<p>{esc(item.get('planning_reason'))}</p>"
+            "</div></article>"
+        )
+
+    rows = []
+    for item in planning_rows:
+        community = (
+            f"{item.get('community_score'):.0f}%"
+            if item.get("community_score") else "—"
+        )
+        rows.append(
+            f"<tr><td>{item.get('planning_rank')}</td>"
+            f"<td><a href='{esc(item.get('url'))}'>{esc(item.get('title'))}</a></td>"
+            f"<td>{item.get('fit_score')}</td><td>{esc(item.get('priority_label'))}</td>"
+            f"<td>{community}</td><td>{esc(item.get('planning_reason'))}</td></tr>"
+        )
+
+    return (
+        "<section id='planning' class='planning-section'><h2>Planning-list priority</h2>"
+        "<p class='hint'>Your Planning list is ordered by overlap with recurring themes and genres. "
+        "Reliable rating patterns are used when enough scores exist; otherwise the full viewing history carries more weight. "
+        "Community reception only acts as a smaller tie-breaker.</p>"
+        f"<div class='plan-grid'>{''.join(cards)}</div>"
+        f"<details class='plan-details'><summary>Full planning order ({len(planning_rows)})</summary>"
+        "<div class='table-wrap'><table><thead><tr><th>#</th><th>Anime</th><th>Fit</th>"
+        "<th>Priority</th><th>AniList</th><th>Why</th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table></div></details></section>"
+    )
+
 
 def linked_stat_rows(stats, overall, score_format, limit=20, show_roles=False):
     overall_top = _overall_top_rate(stats)
@@ -529,6 +587,7 @@ def section_navigation():
         "<nav class='section-nav' aria-label='Report sections'>"
         "<a href='#taste'>Taste</a>"
         "<a href='#recommendations'>Recommendations</a>"
+        "<a href='#planning'>Planning priority</a>"
         "<a href='#patterns'>Patterns</a>"
         "<a href='#people'>Creators and VAs</a>"
         "<a href='#rating-behavior'>Rating behavior</a>"
@@ -536,7 +595,7 @@ def section_navigation():
         "</nav>"
     )
 
-def build_html(user, rows, all_entries, output, score_format, overall, stats, identity, taste_glance, recommendation_groups, include_staff):
+def build_html(user, rows, all_entries, output, score_format, overall, stats, identity, taste_glance, recommendation_groups, planning_priorities, include_staff):
     rated_rows = [row for row in rows if row.get("rating") is not None]
     ratings = [float(row["rating"]) for row in rated_rows]
     rated_count = len(ratings)
@@ -657,14 +716,15 @@ def build_html(user, rows, all_entries, output, score_format, overall, stats, id
 section{{margin-top:28px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px}}.rec-block{{margin-top:16px;background:var(--panel2)}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:18px}}.grid section{{margin-top:28px}}
 .table-wrap{{overflow:auto}}table{{width:100%;border-collapse:collapse;min-width:760px}}th,td{{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left}}.consensus-details{{margin-top:28px}}.consensus-stack{{display:grid;gap:18px;padding-top:14px}}.consensus-panel{{margin-top:0}}.consensus-table{{width:100%;min-width:0;table-layout:fixed}}.consensus-table th:first-child,.consensus-table td:first-child{{width:46%}}.consensus-table th:not(:first-child),.consensus-table td:not(:first-child){{width:18%;text-align:center}}.consensus-title{{overflow-wrap:anywhere;word-break:normal}}th{{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}}.positive{{color:var(--good)}}.negative{{color:var(--bad)}}.neutral{{color:var(--muted)}}
 .dist-row{{display:grid;grid-template-columns:90px 1fr 40px;gap:10px;align-items:center;margin:10px 0}}.bar{{height:12px;background:#263346;border-radius:999px;overflow:hidden}}.bar i{{display:block;height:100%;background:var(--accent);border-radius:inherit}}
-details{{margin-top:22px}}summary{{cursor:pointer;font-size:20px;font-weight:700;padding:14px 18px;background:var(--panel);border:1px solid var(--line);border-radius:12px}}details[open] summary{{border-radius:12px 12px 0 0}}details>section{{margin-top:0;border-radius:0 0 16px 16px}}.rec-details{{margin-top:12px}}.rec-details summary{{font-size:16px;background:var(--panel2);padding:10px 14px}}.rec-details .rec-block{{border-radius:0 0 12px 12px;margin-top:0}}
-.va-grid{{display:grid;gap:14px}}.va-card{{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:16px}}.va-card-head{{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}}.va-card h3{{margin:0;font-size:20px}}.va-score{{text-align:right;white-space:nowrap}}.va-score strong,.va-score span{{display:block}}.va-score span,.season-count{{color:var(--muted);font-size:12px}}.va-role-section{{margin-top:14px}}.va-role-section h4{{margin:0 0 7px;font-size:15px}}.va-role-section h4 span{{color:var(--muted);font-weight:400}}.va-role-section>summary{{font-size:14px;padding:8px 10px;background:rgba(0,0,0,.14)}}.va-role-list{{margin:7px 0 0;padding-left:20px}}.va-role-list li{{margin:5px 0}}.va-characters{{font-weight:600}}.va-anime{{color:var(--muted)}}.va-more{{margin:8px 0 0 20px}}.va-more>summary{{display:inline-block;font-size:12px;padding:5px 9px;background:rgba(0,0,0,.16)}}.va-other{{margin-top:18px}}.va-other>summary{{font-size:17px;background:var(--panel2)}}.va-grid-compact{{margin-top:12px}}.va-card-details{{margin-top:10px}}.va-card-details>summary{{font-size:13px;padding:7px 10px;background:rgba(0,0,0,.14)}}.taste-glance{{background:linear-gradient(135deg,var(--panel2),var(--panel));border-color:rgba(98,214,232,.35)}}.taste-glance .eyebrow{{color:var(--accent);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em}}.taste-glance h2{{font-size:clamp(22px,4vw,34px);max-width:900px;margin-top:7px}}.taste-glance>p{{max-width:850px;font-size:16px}}.glance-signals{{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}}.glance-signal{{background:rgba(0,0,0,.18);border:1px solid var(--line);border-radius:10px;padding:9px 12px}}.glance-signal span,.glance-signal strong{{display:block}}.glance-signal span{{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}}footer{{margin-top:36px;color:var(--muted);font-size:13px}}@media(max-width:650px){{main{{padding:16px 10px 50px}}section,.hero{{padding:15px}}.consensus-table th,.consensus-table td{{padding:8px 5px;font-size:12px}}.consensus-table th:first-child,.consensus-table td:first-child{{width:40%}}.consensus-table th:not(:first-child),.consensus-table td:not(:first-child){{width:20%}}}}
+details{{margin-top:22px}}summary{{cursor:pointer;font-size:20px;font-weight:700;padding:14px 18px;background:var(--panel);border:1px solid var(--line);border-radius:12px}}details[open] summary{{border-radius:12px 12px 0 0}}details>section{{margin-top:0;border-radius:0 0 16px 16px}}.rec-details{{margin-top:12px}}.rec-details summary{{font-size:16px;background:var(--panel2);padding:10px 14px}}.rec-details .rec-block{{border-radius:0 0 12px 12px;margin-top:0}}.planning-section{{border-color:rgba(98,214,232,.42);background:linear-gradient(135deg,var(--panel),#111f30)}}.plan-grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}}.plan-card{{position:relative;display:grid;grid-template-columns:88px 1fr;gap:14px;min-height:132px;padding:14px;border:1px solid var(--line);border-radius:14px;background:rgba(0,0,0,.18)}}.plan-rank{{position:absolute;top:9px;left:9px;z-index:2;padding:3px 7px;border-radius:999px;background:rgba(6,17,30,.9);color:var(--accent);font-weight:800;font-size:12px}}.plan-cover{{width:88px;height:124px;border-radius:10px;overflow:hidden;background:#203044}}.plan-cover img{{width:100%;height:100%;object-fit:cover}}.plan-cover-empty{{width:100%;height:100%}}.plan-copy h3{{margin:5px 0 4px;font-size:18px;line-height:1.2}}.plan-label{{color:var(--accent);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}}.plan-meta{{color:var(--muted);font-size:12px}}.plan-copy p{{margin:8px 0 0;color:#c9d4e2;font-size:13px;line-height:1.4}}.plan-details{{margin-top:16px}}
+.va-grid{{display:grid;gap:14px}}.va-card{{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:16px}}.va-card-head{{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}}.va-card h3{{margin:0;font-size:20px}}.va-score{{text-align:right;white-space:nowrap}}.va-score strong,.va-score span{{display:block}}.va-score span,.season-count{{color:var(--muted);font-size:12px}}.va-role-section{{margin-top:14px}}.va-role-section h4{{margin:0 0 7px;font-size:15px}}.va-role-section h4 span{{color:var(--muted);font-weight:400}}.va-role-section>summary{{font-size:14px;padding:8px 10px;background:rgba(0,0,0,.14)}}.va-role-list{{margin:7px 0 0;padding-left:20px}}.va-role-list li{{margin:5px 0}}.va-characters{{font-weight:600}}.va-anime{{color:var(--muted)}}.va-more{{margin:8px 0 0 20px}}.va-more>summary{{display:inline-block;font-size:12px;padding:5px 9px;background:rgba(0,0,0,.16)}}.va-other{{margin-top:18px}}.va-other>summary{{font-size:17px;background:var(--panel2)}}.va-grid-compact{{margin-top:12px}}.va-card-details{{margin-top:10px}}.va-card-details>summary{{font-size:13px;padding:7px 10px;background:rgba(0,0,0,.14)}}.taste-glance{{background:linear-gradient(135deg,var(--panel2),var(--panel));border-color:rgba(98,214,232,.35)}}.taste-glance .eyebrow{{color:var(--accent);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em}}.taste-glance h2{{font-size:clamp(22px,4vw,34px);max-width:900px;margin-top:7px}}.taste-glance>p{{max-width:850px;font-size:16px}}.glance-signals{{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}}.glance-signal{{background:rgba(0,0,0,.18);border:1px solid var(--line);border-radius:10px;padding:9px 12px}}.glance-signal span,.glance-signal strong{{display:block}}.glance-signal span{{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}}footer{{margin-top:36px;color:var(--muted);font-size:13px}}@media(max-width:760px){{.plan-grid{{grid-template-columns:1fr}}}}@media(max-width:650px){{main{{padding:16px 10px 50px}}section,.hero{{padding:15px}}.consensus-table th,.consensus-table td{{padding:8px 5px;font-size:12px}}.consensus-table th:first-child,.consensus-table td:first-child{{width:40%}}.consensus-table th:not(:first-child),.consensus-table td:not(:first-child){{width:20%}}}}
 </style></head><body><main>
 <div class='hero'><div class='muted'>Unofficial AniList taste analysis</div><h1>{esc(user['name'])}</h1><div><a href='{esc(user.get('siteUrl',''))}'>Open AniList profile</a> · Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</div>
 <div class='cards'><div class='card'><span>Watched anime</span><strong>{watched_count}</strong></div><div class='card'><span>Rated anime</span><strong>{rated_count}</strong></div><div class='card'><span>Rating coverage</span><strong>{coverage:.0%}</strong></div><div class='card'><span>Average</span><strong>{average_text}</strong></div><div class='card'><span>Top-rating rate</span><strong>{top_rate_text}</strong></div></div>{section_navigation()}</div>
 {glance_html}
 <details class='taste-details'><summary>Detailed taste profile</summary><section><h2>Detailed taste profile</h2><div class='confidence'>Viewing-pattern confidence: {confidence} · {watched_count} watched · {rated_count} rated</div>{profile_html}</section></details>
 {recommendations_section(recommendation_groups, score_format)}
+{planning_priority_section(planning_priorities, score_format)}
 {primary}{people}
 {rating_behavior_section(''.join(dist), positive, negative, top_rows, low_rows, score_format, rated_count)}
 <h2 id='details' style='margin-top:34px'>More detail</h2>{secondary}

@@ -1,20 +1,16 @@
-Source: user-uploaded AniList Taste Analyzer 3.6.2 project
-Build: 3.7.0
+Source: AniList Taste Analyzer 3.7.0
+Build: 3.8.0
 
-Changed analysis behavior
-- main.py: analyzes the full completed viewing list and tracks rated entries separately.
-- analyzer/data.py: watched recurrence includes unrated shows; rating metrics use rated shows only.
-- analyzer/profile.py: preserves rating-first behavior for sufficiently rated lists and uses full-history recurrence for sparse lists.
-- analyzer/recommendations.py: adds a viewing-history recommendation path when rating coverage is sparse.
-- analyzer/report.py: separates Watched and Rated counts and handles sparse or absent ratings throughout.
-- analyzer/share.py and analyzer/share_pillow.py: image metrics now distinguish watched and rated anime.
-- analyzer/models.py: group statistics include rated_count and allow missing rating metrics.
+Added
+- Planning-list priority ranking based on the same hybrid taste evidence used for recommendations.
+- planning_priority.csv export.
+- Planning priority section in the interactive HTML report.
+- Expanded signal icon library with distinct icons for common AniList theme families.
 
 Preserved
-- Existing taste-cover and share-card layouts.
-- Existing Exploration artwork and quote banner.
-- Browser-rendered share-card image fix.
-- Existing behavior and ranking priorities for well-rated lists.
+- Existing taste-cover layout and artwork.
+- Existing share-card layout and artwork.
+- Existing recommendation, creator, VA, and sparse-rating behavior.
 
 Removed from distributable
 - .git

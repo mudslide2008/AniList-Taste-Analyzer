@@ -17,9 +17,13 @@ from analyzer.data import (
     voice_actor_stats,
 )
 from analyzer.profile import build_identity_profile, build_taste_at_glance
-from analyzer.recommendations import fetch_recommendations, categorize_recommendations
+from analyzer.recommendations import (
+    fetch_recommendations,
+    categorize_recommendations,
+    rank_planning_list,
+)
 from analyzer.report import build_html
-from analyzer.exports import write_csv, write_json
+from analyzer.exports import write_csv, write_json, write_planning_priority_csv
 from analyzer.share import write_share_assets
 
 
@@ -145,12 +149,24 @@ def main():
             stats["genres"],
         )
         rec_groups = categorize_recommendations(recs)
+        planning_rows = [
+            row for row in all_entries
+            if row.get("status") == "PLANNING"
+        ]
+        planning_priorities = rank_planning_list(
+            planning_rows,
+            rows,
+            max_score,
+            stats["all_tags"],
+            stats["genres"],
+        )
 
         out = Path(args.output or f"anilist_report_{safe_name(user['name'])}").resolve()
         out.mkdir(parents=True, exist_ok=True)
         html_path = out / "anime_taste_report.html"
         write_csv(rows, out / "anime_data.csv")
         write_json(user, rows, out / "anime_data.json")
+        write_planning_priority_csv(planning_priorities, out / "planning_priority.csv")
         build_html(
             user,
             rows,
@@ -162,6 +178,7 @@ def main():
             identity,
             taste_glance,
             rec_groups,
+            planning_priorities,
             not args.no_staff,
         )
         write_share_assets(
@@ -179,6 +196,7 @@ def main():
         print(f"Social card:  {out / 'share_card.png'}")
         print(f"Taste cover:  {out / 'taste_cover.png'}")
         print(f"Text summary: {out / 'share_summary.txt'}")
+        print(f"Planning order: {out / 'planning_priority.csv'}")
         if not args.no_open:
             webbrowser.open(html_path.as_uri())
         return 0

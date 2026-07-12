@@ -466,3 +466,160 @@ def categorize_recommendations(recs):
         "From your viewing history": evidence_group if history_mode else [],
         "Outside your comfort zone": outside,
     }
+
+
+def rank_planning_list(planning_rows, view_rows, max_score, tag_stats, genre_stats):
+    """Rank a user's planning list by estimated taste fit.
+
+    This deliberately mirrors the recommendation model's hybrid behavior:
+    recurrent viewing patterns always count, while rating correlations only
+    gain influence when the user has enough scored anime for them to be
+    trustworthy. Community reception is a modest tie-breaker rather than the
+    main signal.
+    """
+    if not planning_rows:
+        return []
+
+    rated_rows = [row for row in view_rows if row.get("rating") is not None]
+    watched_count = len(view_rows)
+    rated_count = len(rated_rows)
+    coverage = rated_count / watched_count if watched_count else 0.0
+    rating_weight = (
+        min(1.0, rated_count / 20.0) * min(1.0, coverage / .50)
+        if watched_count else 0.0
+    )
+    overall_top = (
+        sum((row.get("rating") or 0) >= max_score for row in rated_rows) / rated_count
+        if rated_count else 0.0
+    )
+
+    max_tag_count = max((stat.count for stat in tag_stats), default=1)
+    max_genre_count = max((stat.count for stat in genre_stats), default=1)
+
+    def weights(stat, max_count):
+        frequency = stat.count / max_count if max_count else 0.0
+        positive = 0.0
+        negative = 0.0
+        if (
+            stat.lift is not None
+            and stat.top_rate is not None
+            and getattr(stat, "rated_count", 0) >= 3
+        ):
+            lift_signal = stat.lift / max_score
+            top_signal = stat.top_rate - overall_top
+            positive = max(0.0, lift_signal) + max(0.0, top_signal)
+            negative = max(0.0, -lift_signal) + max(0.0, -top_signal)
+
+        # Sparse lists are governed mostly by recurring viewing history.
+        # Well-rated lists gradually shift toward positive/negative score data.
+        positive_weight = frequency * (1.0 - .55 * rating_weight) + positive * rating_weight
+        negative_weight = negative * rating_weight
+        return positive_weight, negative_weight
+
+    tag_weights = {
+        stat.name: weights(stat, max_tag_count)
+        for stat in tag_stats
+        if stat.count >= 3 and is_meaningful_tag(stat.name)
+    }
+    genre_weights = {
+        stat.name: weights(stat, max_genre_count)
+        for stat in genre_stats
+        if stat.count >= 3
+    }
+
+    ranked = []
+    for row in planning_rows:
+        meaningful_tags = [
+            tag for tag in dict.fromkeys(row.get("tags") or [])
+            if is_meaningful_tag(tag)
+        ]
+        genres = list(dict.fromkeys(row.get("genres") or []))
+
+        matched_tags = sorted(
+            [tag for tag in meaningful_tags if tag_weights.get(tag, (0.0, 0.0))[0] > 0],
+            key=lambda tag: tag_weights[tag][0],
+            reverse=True,
+        )
+        matched_genres = sorted(
+            [genre for genre in genres if genre_weights.get(genre, (0.0, 0.0))[0] > 0],
+            key=lambda genre: genre_weights[genre][0],
+            reverse=True,
+        )
+        caution_tags = sorted(
+            [
+                tag for tag in meaningful_tags
+                if tag_weights.get(tag, (0.0, 0.0))[1] > .02
+                and tag_weights.get(tag, (0.0, 0.0))[1]
+                > tag_weights.get(tag, (0.0, 0.0))[0] * .75
+            ],
+            key=lambda tag: tag_weights[tag][1],
+            reverse=True,
+        )
+
+        tag_score = sum(tag_weights[tag][0] for tag in matched_tags[:5])
+        genre_score = sum(genre_weights[genre][0] for genre in matched_genres[:3])
+        caution_score = sum(tag_weights[tag][1] for tag in caution_tags[:3])
+        community = (row.get("community_score") or 0) / 100.0
+        popularity_bonus = math.log10(max(10, row.get("popularity") or 10)) / 10.0
+
+        raw_score = (
+            tag_score * 3.0
+            + genre_score * 1.4
+            - caution_score * 1.7
+            + community * .75
+            + popularity_bonus * .12
+        )
+
+        ranked.append({
+            **row,
+            "planning_raw_score": raw_score,
+            "matched_tags": matched_tags[:4],
+            "matched_genres": matched_genres[:3],
+            "caution_tags": caution_tags[:2],
+            "rating_evidence_weight": rating_weight,
+        })
+
+    ranked.sort(
+        key=lambda item: (
+            item["planning_raw_score"],
+            item.get("community_score") or 0,
+            item.get("popularity") or 0,
+        ),
+        reverse=True,
+    )
+
+    low = min((item["planning_raw_score"] for item in ranked), default=0.0)
+    high = max((item["planning_raw_score"] for item in ranked), default=0.0)
+    span = high - low
+
+    for index, item in enumerate(ranked, start=1):
+        normalized = .5 if span <= 1e-9 else (item["planning_raw_score"] - low) / span
+        fit_score = round(55 + normalized * 40)
+        start_here_cutoff = max(1, math.ceil(len(ranked) * .20))
+        strong_cutoff = max(start_here_cutoff + 1, math.ceil(len(ranked) * .50))
+        if index <= start_here_cutoff:
+            label = "Start here"
+        elif index <= strong_cutoff:
+            label = "Strong match"
+        else:
+            label = "Worth considering"
+
+        reasons = []
+        if item["matched_tags"]:
+            reasons.append("theme overlap: " + ", ".join(item["matched_tags"][:3]))
+        elif item["matched_genres"]:
+            reasons.append("genre overlap: " + ", ".join(item["matched_genres"][:2]))
+        if item.get("community_score"):
+            reasons.append(f"AniList score {item['community_score']:.0f}%")
+        if item["caution_tags"] and rating_weight >= .35:
+            reasons.append("possible mismatch: " + ", ".join(item["caution_tags"]))
+        if not reasons:
+            reasons.append("limited profile overlap; ranked mainly by community reception")
+
+        item["planning_rank"] = index
+        item["fit_score"] = fit_score
+        item["priority_label"] = label
+        item["planning_reason"] = "; ".join(reasons) + "."
+
+    return ranked
+
