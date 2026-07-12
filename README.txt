@@ -24,3 +24,5 @@ Version 3.8 additions
 - The ranking blends recurring viewing patterns, reliable rating correlations, and a smaller community-score tie-breaker.
 - A planning_priority.csv file is written beside the normal report exports.
 - Taste-cover signal icons now cover many more themes instead of falling back to the same star.
+
+Just run the .bat and input the anilist profile name
